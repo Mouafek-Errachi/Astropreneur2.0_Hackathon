@@ -1,0 +1,50 @@
+{
+  "name": "HR sub-guard (sanitize + injection scan)",
+  "nodes": [
+    {
+      "id": "98358c62-c6d7-4c66-8972-f1a3aa04ac7b",
+      "name": "Receive Fields",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "62341fec-f98c-4637-9f20-5c0cf63a2cf1",
+      "name": "Sanitize and Scan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const input = $input.first().json;\nconst fields = input.fields || {};\nconst sanitize = (s, max) => String(s ?? '')\n  .normalize('NFKC')\n  .replace(/[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u2064\\uFEFF]/g, '')\n  .replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]/g, '')\n  .replace(/<\\/?untrusted_input[^>]*>/gi, '')\n  .replace(/<[^>]*>/g, '')\n  .trim()\n  .slice(0, max || 5000);\nconst PATTERNS = [\n  ['override', /ignore (all |any )?(of )?(the |your )?(previous|prior|above|earlier) (instructions|rules|prompts?)/i],\n  ['override', /disregard (the |your |all )?(system|previous|prior) (prompt|instructions|rules)/i],\n  ['override', /ignore (your|the) (rules|instructions|system prompt)/i],\n  ['role_hijack', /\\byou are now\\b|\\bact as (an?|the) (admin|administrator|system|hr manager)/i],\n  ['prompt_leak', /(reveal|print|show|repeat) (me )?(your|the) (system )?(prompt|instructions)/i],\n  ['score_manipulation', /(rank|score|rate|mark) (me|this candidate|this answer)( as)? (#?1|first|highest|perfect|10\\s*\\/\\s*10)/i],\n  ['fake_markup', /\\[INST\\]|<\\|?(system|im_start)\\|?>|BEGIN (SYSTEM|ADMIN)/i],\n  ['action_request', /(send|forward|email) (this|all|the) .{0,30}(to |@)/i]\n];\nconst clean = {};\nconst flags = [];\nfor (const [name, text] of Object.entries(fields)) {\n  const raw = String(text ?? '');\n  clean[name] = sanitize(raw, 5000);\n  for (const [type, re] of PATTERNS) {\n    if (re.test(raw) || re.test(clean[name])) flags.push({ field: name, type });\n  }\n}\nreturn [{ json: { clean, flags, injection_suspected: flags.length > 0 } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Receive Fields": {
+      "main": [
+        [
+          {
+            "node": "Sanitize and Scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

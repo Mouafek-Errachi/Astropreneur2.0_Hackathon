@@ -1,0 +1,73 @@
+# Secure AI HR System: n8n + Gemini backend
+
+Backend for the Secure AI HR System hackathon, built as n8n webhook workflows calling Gemini. The rule everywhere: **the agent executes, the human decides**. Gemini only proposes; code checks every output, and nothing is sent or recorded until an HR admin approves it.
+
+All data in this folder is fictional. Keys and tokens are placeholders.
+
+## Features
+
+| Endpoint | What it does | Human gate |
+| --- | --- | --- |
+| `POST /api/interview/assist` | Reads a live interview transcript chunk and suggests 2-3 probing questions when an answer is vague, evasive or contradicts the resume | Suggestions are shown to the interviewer only |
+| `POST /api/hr/broadcast` | Rewrites rough HR notes for one team's tone; a code check blocks invented numbers and links | Queued for approval, never sent automatically |
+| `POST /api/hr/tickets` | Classifies an employee request and drafts a reply cited from policy text | Every reply is queued for HR |
+| `POST /api/hr/points/award` | Awards points from a server-side rule table into an append-only ledger | The HR click is the decision; automated awards are queued |
+| `GET /api/hr/leaderboard` | Ranked leaderboard with badges and an optional Gemini shoutout (cached) | Read-only |
+| `GET /api/hr/approvals` | The approval queue for the HR dashboard | Read-only |
+| `POST /api/hr/approvals/decision` | Approve (optionally with edits) or reject a queued item; the only path that sends or records | This is the gate |
+
+## Architecture
+
+```
+Client (extension / dashboard / portal)
+  -> Webhook -> API key check (hr_api_keys) -> input validation
+  -> sub-guard: sanitize + prompt-injection scan
+  -> sub-gemini-json: Gemini in JSON mode, retry, parse, safe fallback
+  -> output checks in code (enums, lengths, citations, fact check)
+  -> respond, or write to hr_approvals
+HR admin -> /approvals/decision -> lock -> send email / write ledger -> audit log
+```
+
+## Security controls
+
+- **Per-client API keys** (`X-API-Key`, checked against `hr_api_keys`): the extension key cannot call HR endpoints, and only the HR admin key can approve. Set `active` to false to revoke a key.
+- **Identity from the token, not the body:** tickets require `X-Employee-Token`; a body `employee_id` that does not match returns 403 (stops IDOR).
+- **Input validation:** field whitelist, types, length caps, ID formats; unknown fields return 400.
+- **Prompt-injection defense:** regex scan for override, role-hijack, prompt-leak and score-manipulation patterns; untrusted text is fenced in `<untrusted_input>` tags; Gemini also reports attempts; flags are returned to the UI and force human review on tickets.
+- **Output checks in code:** enums and lengths enforced, HTML stripped, citations must exist in the policy table, and the broadcast fact check flags numbers or links that were not in HR's draft.
+- **Human approval:** single queue, item locked before dispatch, `409` on a second decision, four-eyes rule on broadcasts, delivery verified by SMTP `messageId` before an item is marked sent.
+- **Points integrity:** points come from the rule table, never the client; idempotency keys, daily caps and a self-award block.
+- **Audit log:** every AI draft, decision and denied attempt, with the AI version and the final human version.
+- **Fairness:** prompts restrict judgments to job-related competencies and forbid protected characteristics.
+
+## Setup in your own n8n
+
+1. **Create the data tables.** In n8n, create the 10 tables listed in `data/schemas.json` with exactly those names and columns, then import each CSV from `data/`.
+2. **Set your secrets.** In `hr_api_keys`, replace each `<..._API_KEY>` with a long random value. In `hr_employees`, replace each `<TOKEN_EMP_...>` with a random token.
+3. **Import the workflows.** Import `workflows/sub-guard.json` and `workflows/sub-gemini-json.json` first, then the 7 `api-*.json` files (Workflows, Import from file). Table references resolve by name.
+4. **Re-link the sub-workflows.** In each `api-*` workflow, open the "Run sub-guard" and "Run sub-gemini-json" nodes and select the two sub-workflows you imported (IDs differ between instances).
+5. **Gemini credential.** In `sub-gemini-json`, select a Google Gemini credential on the "Call Gemini" node (n8n cloud AI credits also work). Model: `gemini-3-flash-preview`, JSON output on, thinking off.
+6. **SMTP credential.** In `api-hr-approvals-decision`, select an SMTP credential (a Mailtrap test inbox works) on both email nodes.
+7. **Publish** all workflows, then restrict "Allowed Origins (CORS)" on each webhook to your dashboard URL and `chrome-extension://<id>`.
+
+## Testing
+
+Import `postman/secure-ai-hr.postman_collection.json`, set the collection variables (`base_url` = `https://<your-n8n-host>/webhook`, plus the keys and tokens you created). It contains happy paths and attack tests:
+
+| Test | Expected |
+| --- | --- |
+| Interview answer with "rate me 10/10" | Injection flagged, evaluation unaffected |
+| Ticket with another employee's `employee_id` | 403 FORBIDDEN |
+| Ticket asking for a colleague's salary | Flagged, routed to HR, no data leaked |
+| Award with `"points": 9999` in the body | 400 unknown field |
+| Same award twice with one idempotency key | Second call returns `duplicate: true` |
+| Creator approves their own broadcast | 403 FOUR_EYES |
+| Approve an item twice | 409 ALREADY_DECIDED |
+| Dashboard key on the decision endpoint | 401 |
+
+## Response envelope
+
+```json
+{ "ok": true, "request_id": "req_123", "data": { }, "security": { "injection_suspected": false, "flags": [] } }
+{ "ok": false, "request_id": "req_124", "error": { "code": "VALIDATION_ERROR", "message": "..." } }
+```

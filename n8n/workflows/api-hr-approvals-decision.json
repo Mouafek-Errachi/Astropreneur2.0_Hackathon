@@ -1,0 +1,1491 @@
+{
+  "name": "HR API: POST /api/hr/approvals/decision",
+  "nodes": [
+    {
+      "id": "59e20e72-d3d2-4bdb-bcbe-16dbd78b46a9",
+      "name": "Decision Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        400
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "api/hr/approvals/decision",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "ec8ca841-5434-404f-87ac-b084c11b19fb"
+    },
+    {
+      "id": "a742efa8-ab70-48d6-b9ea-bbef6e0d34a3",
+      "name": "Lookup API Key",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        400
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_api_keys"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "api_key",
+              "condition": "eq",
+              "keyValue": "={{ $json.headers[\"x-api-key\"] || \"missing\" }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "6221db12-54d3-4f29-bfed-40bcfddd7aff",
+      "name": "Authorize and Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const req = $('Decision Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key || key.active !== true || key.client !== 'hr_admin') return fail(401, 'UNAUTHORIZED', 'Only the HR admin key can decide approvals');\nconst body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};\nconst errors = [];\nfor (const k of Object.keys(body)) if (!['approval_id', 'decision', 'reviewer_id', 'reason', 'edited_content'].includes(k)) errors.push('unknown field: ' + k);\nif (!/^apr_\\d{1,12}$/.test(String(body.approval_id || ''))) errors.push('approval_id must look like apr_123');\nif (!['approve', 'reject'].includes(body.decision)) errors.push('decision must be approve or reject');\nif (!/^[A-Za-z0-9_-]{1,64}$/.test(String(body.reviewer_id || ''))) errors.push('reviewer_id is required (letters, digits, _ or -)');\nconst clean = (s, n) => String(s ?? '').normalize('NFKC').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F\\u200B-\\u200F\\u202A-\\u202E\\uFEFF]/g, '').replace(/<[^>]*>/g, '').trim().slice(0, n);\nconst reason = body.reason == null ? '' : clean(body.reason, 300);\nif (body.reason != null && (typeof body.reason !== 'string' || body.reason.length > 300)) errors.push('reason must be a string of at most 300 characters');\nif (body.decision === 'reject' && !reason) errors.push('reason is required to reject');\nlet edited = null;\nif (body.edited_content != null) {\n  const ec = body.edited_content;\n  if (typeof ec !== 'object' || Array.isArray(ec)) errors.push('edited_content must be an object with subject and/or body');\n  else {\n    for (const k of Object.keys(ec)) if (!['subject', 'body'].includes(k)) errors.push('unknown edited_content field: ' + k);\n    if (ec.subject != null && (typeof ec.subject !== 'string' || ec.subject.length > 150)) errors.push('edited_content.subject must be at most 150 characters');\n    if (ec.body != null && (typeof ec.body !== 'string' || ec.body.length > 5000)) errors.push('edited_content.body must be at most 5000 characters');\n    edited = { subject: ec.subject == null ? null : clean(ec.subject, 150), body: ec.body == null ? null : clean(ec.body, 5000) };\n  }\n}\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, approval_id: body.approval_id, decision: body.decision, reviewer_id: body.reviewer_id, reason, edited_content: edited } }];"
+      }
+    },
+    {
+      "id": "3640942b-ff56-440a-9080-8783797857eb",
+      "name": "Is Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "78d0e7c8-a293-476a-beac-d758eee1f08d",
+      "name": "Load Approval",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "approval_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.approval_id }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "df908a9e-f5ad-40e9-b7a6-401ce3fbaf3e",
+      "name": "Check Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const v = $('Authorize and Validate').first().json;\nconst a = $input.first().json || {};\nconst rid = v.request_id;\nconst deny = (status, code, message) => [{ json: { outcome: 'respond', approval_id: v.approval_id, reviewer_id: v.reviewer_id, audit_action: 'decision_denied', audit_details: code, ai_json: '', final_json: '', status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!a.approval_id) return deny(404, 'NOT_FOUND', 'Approval not found');\nif (!['pending_approval', 'failed'].includes(a.status)) return deny(409, 'ALREADY_DECIDED', 'This approval is already ' + a.status);\nif (a.type === 'broadcast' && a.created_by === v.reviewer_id) return deny(403, 'FOUR_EYES', 'The person who created a broadcast cannot approve it');\nlet p = {};\ntry { p = JSON.parse(a.payload || '{}'); } catch (e) { p = {}; }\nconst aiDraft = p.ai_draft || p.draft || null;\nlet finalDraft = p.draft || null;\nlet edited = false;\nif (v.decision === 'approve' && v.edited_content && finalDraft) {\n  finalDraft = { subject: v.edited_content.subject || finalDraft.subject, body: v.edited_content.body || finalDraft.body };\n  edited = !aiDraft || finalDraft.subject !== aiDraft.subject || finalDraft.body !== aiDraft.body;\n}\np.draft = finalDraft;\nreturn [{ json: {\n  outcome: v.decision, type: a.type, approval_id: a.approval_id, target_ref: a.target_ref,\n  reviewer_id: v.reviewer_id, reason: v.reason, edited, decided_at: $now.toISO(), request_id: rid,\n  payload: p, payload_json: JSON.stringify(p),\n  ai_json: JSON.stringify(aiDraft), final_json: JSON.stringify(finalDraft),\n  audit_action: v.decision === 'approve' ? 'approval_approved' : 'approval_rejected', audit_details: v.reason || ''\n} }];"
+      }
+    },
+    {
+      "id": "6db0bbfa-e77a-4a28-9624-a8cd6ef6b898",
+      "name": "Insert Audit Log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_audit_log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "=evt_{{ $execution.id }}_decision",
+            "actor": "={{ $json.reviewer_id }}",
+            "action": "={{ $json.audit_action }}",
+            "ref_id": "={{ $json.approval_id }}",
+            "ai_version": "={{ $json.ai_json }}",
+            "final_version": "={{ $json.final_json }}",
+            "details": "={{ $json.audit_details }}"
+          },
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "actor",
+              "displayName": "actor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ref_id",
+              "displayName": "ref_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_version",
+              "displayName": "ai_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "final_version",
+              "displayName": "final_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "cc965369-9ba3-4a0d-a56b-ee17042c8f42",
+      "name": "Route Decision",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1400,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "approve",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Check Decision').first().json.outcome }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "approve"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "reject",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Check Decision').first().json.outcome }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "reject"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Denied"
+        }
+      }
+    },
+    {
+      "id": "9b245769-6376-4709-8ca7-d212d35a0077",
+      "name": "Mark Approved (lock)",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1600,
+        100
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "approval_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.approval_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "approved",
+            "decided_by": "={{ $('Check Decision').first().json.reviewer_id }}",
+            "edited_by_human": "={{ $('Check Decision').first().json.edited }}",
+            "decided_at": "={{ $('Check Decision').first().json.decided_at }}",
+            "payload": "={{ $('Check Decision').first().json.payload_json }}"
+          },
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_by",
+              "displayName": "decided_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "edited_by_human",
+              "displayName": "edited_by_human",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_at",
+              "displayName": "decided_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "09745937-993a-4aac-b79a-304bbef8132d",
+      "name": "Route Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1800,
+        100
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "broadcast",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Check Decision').first().json.type }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "broadcast"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "ticket_reply",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Check Decision').first().json.type }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "ticket_reply"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "points_award",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $('Check Decision').first().json.type }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "points_award"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "id": "d018c357-b1f4-4bcf-b653-675a65197d26",
+      "name": "Lookup Team Mailing List",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        -100
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_teams"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "team_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.target_ref }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      }
+    },
+    {
+      "id": "78f5594e-27b5-4eb1-9c5a-921b8ba9153e",
+      "name": "Send Broadcast Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2200,
+        -100
+      ],
+      "parameters": {
+        "operation": "send",
+        "fromEmail": "HR Team <hr@hr-demo.test>",
+        "toEmail": "={{ $json.mailing_list }}",
+        "subject": "={{ $('Check Decision').first().json.payload.draft.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $('Check Decision').first().json.payload.draft.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "onError": "continueErrorOutput",
+      "webhookId": "bcaf75d5-6b39-4f27-b52f-231d897ce48a"
+    },
+    {
+      "id": "91936359-be9e-4814-8f51-6b1450204d21",
+      "name": "Mark Sent or Recorded",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2600,
+        100
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "approval_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.approval_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $('Check Decision').first().json.type === 'points_award' ? 'recorded' : 'sent' }}",
+            "reason": ""
+          },
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "83189535-1dee-459a-b837-6d16599efd55",
+      "name": "Mark Failed",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2600,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "approval_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.approval_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "failed",
+            "reason": "dispatch_failed: email could not be sent"
+          },
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "995bfd22-c1bc-4aed-83eb-83607f8b3e37",
+      "name": "Lookup Ticket Employee",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        100
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_employees"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "employee_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.payload.employee_id }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      }
+    },
+    {
+      "id": "2cd49d55-d468-463c-b06a-1e72a39d94d4",
+      "name": "Send Ticket Reply",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        2200,
+        100
+      ],
+      "parameters": {
+        "operation": "send",
+        "fromEmail": "HR Team <hr@hr-demo.test>",
+        "toEmail": "={{ $json.email }}",
+        "subject": "={{ $('Check Decision').first().json.payload.draft.subject }}",
+        "emailFormat": "text",
+        "text": "={{ $('Check Decision').first().json.payload.draft.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "onError": "continueErrorOutput",
+      "webhookId": "bb166bac-d85b-4d48-aad7-804feccfbccd"
+    },
+    {
+      "id": "0188e60f-ee6d-4d8e-bc6e-c6a7755ba53b",
+      "name": "Update Ticket Status",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        100
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_tickets"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "ticket_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.payload.ticket_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "={{ $('Check Decision').first().json.payload.requires_hr_action ? 'in_progress' : 'resolved' }}"
+          },
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "1ec003bd-fd69-406f-89aa-0b74f7cff24a",
+      "name": "Insert Approved Points",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_points_ledger"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ledger_id": "={{ $('Check Decision').first().json.payload.row.ledger_id }}",
+            "employee_id": "={{ $('Check Decision').first().json.payload.row.employee_id }}",
+            "action_type": "={{ $('Check Decision').first().json.payload.row.action_type }}",
+            "points": "={{ $('Check Decision').first().json.payload.row.points }}",
+            "period": "={{ $('Check Decision').first().json.payload.row.period }}",
+            "awarded_on": "={{ $('Check Decision').first().json.payload.row.awarded_on }}",
+            "awarded_by": "={{ $('Check Decision').first().json.payload.row.awarded_by }}",
+            "note": "={{ $('Check Decision').first().json.payload.row.note }}",
+            "source": "={{ $('Check Decision').first().json.payload.row.source }}",
+            "idempotency_key": "={{ $('Check Decision').first().json.payload.row.idempotency_key }}"
+          },
+          "schema": [
+            {
+              "id": "ledger_id",
+              "displayName": "ledger_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "employee_id",
+              "displayName": "employee_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "action_type",
+              "displayName": "action_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "points",
+              "displayName": "points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "awarded_on",
+              "displayName": "awarded_on",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "awarded_by",
+              "displayName": "awarded_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "note",
+              "displayName": "note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "idempotency_key",
+              "displayName": "idempotency_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "6a73a05c-8e4b-4ab7-99fa-c606219cf6e4",
+      "name": "Mark Rejected",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1600,
+        500
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "approval_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.approval_id }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "rejected",
+            "decided_by": "={{ $('Check Decision').first().json.reviewer_id }}",
+            "decided_at": "={{ $('Check Decision').first().json.decided_at }}",
+            "reason": "={{ $('Check Decision').first().json.reason }}"
+          },
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_by",
+              "displayName": "decided_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_at",
+              "displayName": "decided_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "cdcfbb1e-82cd-4c86-b918-b058788a5ad9",
+      "name": "Return Ticket to HR",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1800,
+        500
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_tickets"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "ticket_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.payload.ticket_id || 'none' }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "pending_hr_action"
+          },
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "996a84f5-7d75-41a3-8cb6-d5bf128db3d0",
+      "name": "Rejected Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        500
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const d = $('Check Decision').first().json;\nreturn [{ json: { status_code: 200, response: { ok: true, request_id: d.request_id, data: { approval_id: d.approval_id, type: d.type, status: 'rejected', decided_by: d.reviewer_id, reason: d.reason, decided_at: d.decided_at } } } }];"
+      }
+    },
+    {
+      "id": "a5aa0823-1da9-4d50-9e4f-a3624945726d",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        3000,
+        400
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response) }}",
+        "options": {
+          "responseCode": "={{ $json.status_code }}"
+        }
+      }
+    },
+    {
+      "id": "2487f6d1-137c-4f52-9402-ae68418b05a1",
+      "name": "Denied Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        700
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const d = $('Check Decision').first().json;\nreturn [{ json: { status_code: d.status_code, response: d.response } }];"
+      }
+    },
+    {
+      "id": "4a2be28d-98db-4961-8c72-d682c27bac54",
+      "name": "Done Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const d = $('Check Decision').first().json;\nconst status = d.type === 'points_award' ? 'recorded' : 'sent';\nreturn [{ json: { status_code: 200, response: { ok: true, request_id: d.request_id, data: { approval_id: d.approval_id, type: d.type, status, decided_by: d.reviewer_id, edited_by_human: d.edited, decided_at: d.decided_at } } } }];"
+      }
+    },
+    {
+      "id": "74b4f500-d4d8-42cc-84d4-a687b2f7c8f8",
+      "name": "Failed Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2800,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const d = $('Check Decision').first().json;\nreturn [{ json: { status_code: 502, response: { ok: false, request_id: d.request_id, error: { code: 'DISPATCH_FAILED', message: 'Approved, but the email could not be sent. Check the SMTP credential, then approve again to retry.' }, data: { approval_id: d.approval_id, type: d.type, status: 'failed' } } } }];"
+      }
+    },
+    {
+      "id": "broadcast-delivered",
+      "name": "Broadcast Delivered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2400,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ Boolean($json.messageId) && !$json.error }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "ticket-reply-delivered",
+      "name": "Ticket Reply Delivered?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2300,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ Boolean($json.messageId) && !$json.error }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Decision Webhook": {
+      "main": [
+        [
+          {
+            "node": "Lookup API Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup API Key": {
+      "main": [
+        [
+          {
+            "node": "Authorize and Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize and Validate": {
+      "main": [
+        [
+          {
+            "node": "Is Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid": {
+      "main": [
+        [
+          {
+            "node": "Load Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Approval": {
+      "main": [
+        [
+          {
+            "node": "Check Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Decision": {
+      "main": [
+        [
+          {
+            "node": "Insert Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Route Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Decision": {
+      "main": [
+        [
+          {
+            "node": "Mark Approved (lock)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Denied Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Approved (lock)": {
+      "main": [
+        [
+          {
+            "node": "Route Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Type": {
+      "main": [
+        [
+          {
+            "node": "Lookup Team Mailing List",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lookup Ticket Employee",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Approved Points",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Team Mailing List": {
+      "main": [
+        [
+          {
+            "node": "Send Broadcast Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Broadcast Email": {
+      "main": [
+        [
+          {
+            "node": "Broadcast Delivered?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Sent or Recorded": {
+      "main": [
+        [
+          {
+            "node": "Done Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Failed": {
+      "main": [
+        [
+          {
+            "node": "Failed Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Ticket Employee": {
+      "main": [
+        [
+          {
+            "node": "Send Ticket Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Ticket Reply": {
+      "main": [
+        [
+          {
+            "node": "Ticket Reply Delivered?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Ticket Status": {
+      "main": [
+        [
+          {
+            "node": "Mark Sent or Recorded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Approved Points": {
+      "main": [
+        [
+          {
+            "node": "Mark Sent or Recorded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Rejected": {
+      "main": [
+        [
+          {
+            "node": "Return Ticket to HR",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Ticket to HR": {
+      "main": [
+        [
+          {
+            "node": "Rejected Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rejected Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Denied Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Done Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Failed Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Broadcast Delivered?": {
+      "main": [
+        [
+          {
+            "node": "Mark Sent or Recorded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ticket Reply Delivered?": {
+      "main": [
+        [
+          {
+            "node": "Update Ticket Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

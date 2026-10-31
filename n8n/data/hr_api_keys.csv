@@ -1,0 +1,5 @@
+api_key,client,label,active
+<EXTENSION_API_KEY>,extension,Chrome interview extension,true
+<HR_DASHBOARD_API_KEY>,hr,HR dashboard,true
+<HR_ADMIN_API_KEY>,hr_admin,HR admin (approvals),true
+<EMPLOYEE_PORTAL_API_KEY>,employee_portal,Employee portal,true

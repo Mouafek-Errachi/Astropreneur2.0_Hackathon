@@ -1,0 +1,7 @@
+action_type,points,daily_cap
+completed_onboarding,50,1
+training_completed,40,2
+extra_task,30,2
+mentoring_session,25,2
+peer_review,20,3
+event_participation,15,1

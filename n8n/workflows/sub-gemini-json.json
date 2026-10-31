@@ -1,0 +1,123 @@
+{
+  "name": "HR sub-gemini-json (call, retry, parse)",
+  "nodes": [
+    {
+      "id": "c768950c-dc83-40da-a956-4bcb94249eb9",
+      "name": "Receive Prompt",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "f3ae9cec-efa9-4063-b5f3-aff9a3a58f35",
+      "name": "Call Gemini",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        300
+      ],
+      "parameters": {
+        "resource": "text",
+        "operation": "message",
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-3-flash-preview"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "={{ $json.user_content }}",
+              "role": "user"
+            }
+          ]
+        },
+        "simplify": true,
+        "jsonOutput": true,
+        "builtInTools": {},
+        "options": {
+          "systemMessage": "={{ $json.system_prompt }}",
+          "temperature": "={{ $json.temperature ?? 0.2 }}",
+          "maxOutputTokens": "={{ $json.max_tokens ?? 800 }}",
+          "thinkingBudget": 0
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 500,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "id": "9bb7fbf0-02a1-4f2c-9174-d928f2b3d25f",
+      "name": "Parse JSON Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const j = $input.first().json;\nconst tryParse = (v) => {\n  if (v && typeof v === 'object') return v;\n  if (typeof v !== 'string' || !v.trim()) return null;\n  const s = v.trim().replace(/^\\x60{3}(?:json)?\\s*/i, '').replace(/\\s*\\x60{3}$/, '');\n  try { return JSON.parse(s); } catch (e) {}\n  const a = s.indexOf('{');\n  const b = s.lastIndexOf('}');\n  if (a >= 0 && b > a) { try { return JSON.parse(s.slice(a, b + 1)); } catch (e) {} }\n  return null;\n};\nconst joinParts = (c) => (c && Array.isArray(c.parts)) ? c.parts.map(p => p.text || '').join('') : undefined;\nconst candidates = [\n  joinParts(j.content),\n  (j.content && typeof j.content === 'object' && !j.content.parts) ? j.content : undefined,\n  typeof j.content === 'string' ? j.content : undefined,\n  j.text,\n  j.output,\n  j.response,\n  j.message && j.message.content,\n  j.candidates && j.candidates[0] ? joinParts(j.candidates[0].content) : undefined\n];\nlet out = null;\nfor (const c of candidates) { out = tryParse(c); if (out) break; }\nif (!out && !j.error && !j.content && !j.candidates && Object.keys(j).length > 0) out = j;\nconst blocked = Boolean(j.promptFeedback && j.promptFeedback.blockReason);\nreturn [{ json: { ok: Boolean(out) && !blocked, out: blocked ? null : out, error: out && !blocked ? null : (blocked ? 'blocked_by_safety' : 'unparseable_model_output') } }];"
+      }
+    },
+    {
+      "id": "c5e56069-1f20-4e36-8381-52f554120a34",
+      "name": "AI Unavailable Fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: { ok: false, out: null, error: 'ai_unavailable' } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Receive Prompt": {
+      "main": [
+        [
+          {
+            "node": "Call Gemini",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Gemini": {
+      "main": [
+        [
+          {
+            "node": "Parse JSON Output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Unavailable Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

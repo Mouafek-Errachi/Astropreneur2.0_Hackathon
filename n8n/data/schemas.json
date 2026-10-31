@@ -1,0 +1,294 @@
+{
+  "hr_api_keys": [
+    {
+      "name": "api_key",
+      "type": "string"
+    },
+    {
+      "name": "client",
+      "type": "string"
+    },
+    {
+      "name": "label",
+      "type": "string"
+    },
+    {
+      "name": "active",
+      "type": "boolean"
+    }
+  ],
+  "hr_employees": [
+    {
+      "name": "employee_id",
+      "type": "string"
+    },
+    {
+      "name": "first_name",
+      "type": "string"
+    },
+    {
+      "name": "last_initial",
+      "type": "string"
+    },
+    {
+      "name": "team_id",
+      "type": "string"
+    },
+    {
+      "name": "email",
+      "type": "string"
+    },
+    {
+      "name": "leave_balance_days",
+      "type": "number"
+    },
+    {
+      "name": "contract_type",
+      "type": "string"
+    },
+    {
+      "name": "portal_token",
+      "type": "string"
+    },
+    {
+      "name": "active",
+      "type": "boolean"
+    }
+  ],
+  "hr_teams": [
+    {
+      "name": "team_id",
+      "type": "string"
+    },
+    {
+      "name": "display_name",
+      "type": "string"
+    },
+    {
+      "name": "member_count",
+      "type": "number"
+    },
+    {
+      "name": "mailing_list",
+      "type": "string"
+    },
+    {
+      "name": "tone_guide",
+      "type": "string"
+    }
+  ],
+  "hr_points_rules": [
+    {
+      "name": "action_type",
+      "type": "string"
+    },
+    {
+      "name": "points",
+      "type": "number"
+    },
+    {
+      "name": "daily_cap",
+      "type": "number"
+    }
+  ],
+  "hr_points_ledger": [
+    {
+      "name": "ledger_id",
+      "type": "string"
+    },
+    {
+      "name": "employee_id",
+      "type": "string"
+    },
+    {
+      "name": "action_type",
+      "type": "string"
+    },
+    {
+      "name": "points",
+      "type": "number"
+    },
+    {
+      "name": "period",
+      "type": "string"
+    },
+    {
+      "name": "awarded_on",
+      "type": "string"
+    },
+    {
+      "name": "awarded_by",
+      "type": "string"
+    },
+    {
+      "name": "note",
+      "type": "string"
+    },
+    {
+      "name": "source",
+      "type": "string"
+    },
+    {
+      "name": "idempotency_key",
+      "type": "string"
+    }
+  ],
+  "hr_shoutouts": [
+    {
+      "name": "period",
+      "type": "string"
+    },
+    {
+      "name": "team_id",
+      "type": "string"
+    },
+    {
+      "name": "ledger_count",
+      "type": "number"
+    },
+    {
+      "name": "headline",
+      "type": "string"
+    },
+    {
+      "name": "summary",
+      "type": "string"
+    },
+    {
+      "name": "generated_at",
+      "type": "string"
+    }
+  ],
+  "hr_policy_chunks": [
+    {
+      "name": "doc_id",
+      "type": "string"
+    },
+    {
+      "name": "section",
+      "type": "string"
+    },
+    {
+      "name": "title",
+      "type": "string"
+    },
+    {
+      "name": "tags",
+      "type": "string"
+    },
+    {
+      "name": "text",
+      "type": "string"
+    }
+  ],
+  "hr_tickets": [
+    {
+      "name": "ticket_id",
+      "type": "string"
+    },
+    {
+      "name": "employee_id",
+      "type": "string"
+    },
+    {
+      "name": "category",
+      "type": "string"
+    },
+    {
+      "name": "priority",
+      "type": "string"
+    },
+    {
+      "name": "status",
+      "type": "string"
+    },
+    {
+      "name": "request_text",
+      "type": "string"
+    },
+    {
+      "name": "approval_id",
+      "type": "string"
+    },
+    {
+      "name": "injection_suspected",
+      "type": "boolean"
+    }
+  ],
+  "hr_approvals": [
+    {
+      "name": "approval_id",
+      "type": "string"
+    },
+    {
+      "name": "type",
+      "type": "string"
+    },
+    {
+      "name": "status",
+      "type": "string"
+    },
+    {
+      "name": "target_ref",
+      "type": "string"
+    },
+    {
+      "name": "payload",
+      "type": "string"
+    },
+    {
+      "name": "checks",
+      "type": "string"
+    },
+    {
+      "name": "created_by",
+      "type": "string"
+    },
+    {
+      "name": "decided_by",
+      "type": "string"
+    },
+    {
+      "name": "edited_by_human",
+      "type": "boolean"
+    },
+    {
+      "name": "reason",
+      "type": "string"
+    },
+    {
+      "name": "decided_at",
+      "type": "string"
+    }
+  ],
+  "hr_audit_log": [
+    {
+      "name": "event_id",
+      "type": "string"
+    },
+    {
+      "name": "actor",
+      "type": "string"
+    },
+    {
+      "name": "action",
+      "type": "string"
+    },
+    {
+      "name": "ref_id",
+      "type": "string"
+    },
+    {
+      "name": "ai_version",
+      "type": "string"
+    },
+    {
+      "name": "final_version",
+      "type": "string"
+    },
+    {
+      "name": "details",
+      "type": "string"
+    }
+  ]
+}

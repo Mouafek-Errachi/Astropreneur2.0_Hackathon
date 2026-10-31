@@ -1,0 +1,882 @@
+{
+  "name": "HR API: POST /api/hr/points/award",
+  "nodes": [
+    {
+      "id": "350d21cd-c721-41ce-833b-1097c946f717",
+      "name": "Award Points Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "api/hr/points/award",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "25616bb3-7e69-428d-8c01-3e9051fbb105"
+    },
+    {
+      "id": "a499204b-97db-4780-8620-4bd44ddb431b",
+      "name": "Lookup API Key",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_api_keys"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "api_key",
+              "condition": "eq",
+              "keyValue": "={{ $json.headers[\"x-api-key\"] || \"missing\" }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "b2183273-3974-4abb-9335-00ae3663bebb",
+      "name": "Authorize and Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const req = $('Award Points Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key || key.active !== true || !['hr', 'hr_admin'].includes(key.client)) return fail(401, 'UNAUTHORIZED', 'Missing or invalid API key for this endpoint');\nconst body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};\nconst errors = [];\nconst ALLOWED = ['employee_id', 'action_type', 'awarded_by', 'note', 'source', 'idempotency_key'];\nfor (const k of Object.keys(body)) if (!ALLOWED.includes(k)) errors.push('unknown field: ' + k);\nconst ID = /^[A-Za-z0-9_-]{1,64}$/;\nif (!ID.test(String(body.employee_id || ''))) errors.push('employee_id is required (letters, digits, _ or -)');\nif (!ID.test(String(body.awarded_by || ''))) errors.push('awarded_by is required (letters, digits, _ or -)');\nif (!/^[a-z_]{2,40}$/.test(String(body.action_type || ''))) errors.push('action_type must be lowercase letters or underscores');\nif (body.note != null && (typeof body.note !== 'string' || body.note.length > 200)) errors.push('note must be a string of at most 200 characters');\nconst source = body.source == null ? 'hr_dashboard' : body.source;\nif (!['hr_dashboard', 'automation'].includes(source)) errors.push('source must be hr_dashboard or automation');\nif (!/^[A-Za-z0-9_.:-]{8,80}$/.test(String(body.idempotency_key || ''))) errors.push('idempotency_key is required (8-80 characters: letters, digits, _ . : -)');\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nconst note = String(body.note || '').replace(/<[^>]*>/g, '').trim();\nreturn [{ json: { valid: true, request_id: rid, employee_id: body.employee_id, action_type: body.action_type, awarded_by: body.awarded_by, note, source, idempotency_key: body.idempotency_key } }];"
+      }
+    },
+    {
+      "id": "f55fa069-e96a-4261-a2e3-26312ade0211",
+      "name": "Is Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "23d0c6ec-e4ee-440a-b5ca-7cc0dedb0ce6",
+      "name": "Lookup Rule",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_points_rules"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "action_type",
+              "condition": "eq",
+              "keyValue": "={{ $('Authorize and Validate').first().json.action_type }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "7443abad-55f8-4f9a-bd00-2d5f4f7a9fac",
+      "name": "Lookup Employee",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1000,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_employees"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "employee_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Authorize and Validate').first().json.employee_id }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "250ac0f2-081f-46d8-af33-7530d12e600a",
+      "name": "Lookup Idempotency Key",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_points_ledger"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "idempotency_key",
+              "condition": "eq",
+              "keyValue": "={{ $('Authorize and Validate').first().json.idempotency_key }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "eea31b87-bc48-4b18-88e3-6ffa777d7f47",
+      "name": "Lookup Employee Ledger",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1400,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_points_ledger"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "employee_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Authorize and Validate').first().json.employee_id }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "487af6c4-b6d9-467c-bb56-84ce3cd78074",
+      "name": "Apply Rules",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const v = $('Authorize and Validate').first().json;\nconst rule = $('Lookup Rule').first().json || {};\nconst emp = $('Lookup Employee').first().json || {};\nconst dup = $('Lookup Idempotency Key').first().json || {};\nconst ledger = $('Lookup Employee Ledger').all().map(i => i.json).filter(r => r.ledger_id);\nconst rid = v.request_id;\nconst fail = (status, code, message) => [{ json: { outcome: 'respond', status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nconst period = $now.toFormat('yyyy-MM');\nconst today = $now.toFormat('yyyy-MM-dd');\nconst sum = (rows) => rows.reduce((s, r) => s + Number(r.points || 0), 0);\nconst badges = (periodRows, allRows) => {\n  const b = [];\n  const t = sum(periodRows);\n  if (t >= 500) b.push('Gold'); else if (t >= 250) b.push('Silver'); else if (t >= 100) b.push('Bronze');\n  if (periodRows.filter(r => r.action_type === 'mentoring_session').length >= 3) b.push('Mentor');\n  if (periodRows.filter(r => r.action_type === 'peer_review').length >= 5) b.push('Reviewer');\n  if (allRows.some(r => r.action_type === 'completed_onboarding')) b.push('Fast Starter');\n  return b;\n};\nif (dup.ledger_id) {\n  if (dup.employee_id !== v.employee_id || dup.action_type !== v.action_type) return fail(409, 'IDEMPOTENCY_CONFLICT', 'idempotency_key was already used for a different award');\n  const pr = ledger.filter(r => r.period === dup.period);\n  return [{ json: { outcome: 'respond', status_code: 200, response: { ok: true, request_id: rid, data: { status: 'recorded', ledger_id: dup.ledger_id, employee_id: dup.employee_id, action_type: dup.action_type, points_awarded: dup.points, period: dup.period, period_total: sum(pr), badges_unlocked: [], duplicate: true } } } }];\n}\nif (!rule.action_type) return fail(422, 'UNKNOWN_ACTION', 'action_type is not in the points rules');\nif (!emp.employee_id || emp.active !== true) return fail(404, 'EMPLOYEE_NOT_FOUND', 'Unknown or inactive employee');\nif (v.awarded_by === v.employee_id) return fail(403, 'SELF_AWARD', 'awarded_by cannot be the same person as employee_id');\nif (rule.action_type === 'completed_onboarding' && ledger.some(r => r.action_type === 'completed_onboarding')) return fail(409, 'CAP_REACHED', 'completed_onboarding can only be awarded once');\nconst todayCount = ledger.filter(r => r.action_type === rule.action_type && r.awarded_on === today).length;\nif (todayCount >= Number(rule.daily_cap || 1)) return fail(409, 'CAP_REACHED', 'Daily cap of ' + rule.daily_cap + ' reached for ' + rule.action_type);\nconst points = Number(rule.points);\nconst row = { ledger_id: 'pts_' + $execution.id, employee_id: v.employee_id, action_type: rule.action_type, points, period, awarded_on: today, awarded_by: v.awarded_by, note: v.note, source: v.source, idempotency_key: v.idempotency_key };\nif (v.source === 'automation') {\n  const approval_id = 'apr_' + $execution.id;\n  const payload = { row, draft: { subject: 'Points award for ' + emp.first_name, body: '+' + points + ' points to ' + v.employee_id + ' for ' + rule.action_type + (v.note ? ' (' + v.note + ')' : '') } };\n  return [{ json: { outcome: 'queue', approval_id, awarded_by: v.awarded_by, employee_id: v.employee_id, payload_json: JSON.stringify(payload), status_code: 202, response: { ok: true, request_id: rid, data: { status: 'pending_approval', approval_id, employee_id: v.employee_id, action_type: rule.action_type, points_pending: points } } } }];\n}\nconst before = ledger.filter(r => r.period === period);\nconst b0 = badges(before, ledger);\nconst b1 = badges(before.concat([row]), ledger.concat([row]));\nconst unlocked = b1.filter(x => !b0.includes(x));\nreturn [{ json: { outcome: 'record', row, status_code: 201, response: { ok: true, request_id: rid, data: { status: 'recorded', ledger_id: row.ledger_id, employee_id: v.employee_id, action_type: rule.action_type, points_awarded: points, period, period_total: sum(before) + points, badges_unlocked: unlocked, duplicate: false } } } }];"
+      }
+    },
+    {
+      "id": "56feb3de-8071-4489-a0aa-0467125fa961",
+      "name": "Route Outcome",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        1800,
+        200
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "outputKey": "record",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "record"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "outputKey": "queue",
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.outcome }}",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "rightValue": "queue"
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "Respond only"
+        }
+      }
+    },
+    {
+      "id": "07c78dc0-95ba-452f-b553-ec14c3da8232",
+      "name": "Insert Ledger Row",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        100
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_points_ledger"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ledger_id": "={{ $json.row.ledger_id }}",
+            "employee_id": "={{ $json.row.employee_id }}",
+            "action_type": "={{ $json.row.action_type }}",
+            "points": "={{ $json.row.points }}",
+            "period": "={{ $json.row.period }}",
+            "awarded_on": "={{ $json.row.awarded_on }}",
+            "awarded_by": "={{ $json.row.awarded_by }}",
+            "note": "={{ $json.row.note }}",
+            "source": "={{ $json.row.source }}",
+            "idempotency_key": "={{ $json.row.idempotency_key }}"
+          },
+          "schema": [
+            {
+              "id": "ledger_id",
+              "displayName": "ledger_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "employee_id",
+              "displayName": "employee_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "action_type",
+              "displayName": "action_type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "points",
+              "displayName": "points",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "period",
+              "displayName": "period",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "awarded_on",
+              "displayName": "awarded_on",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "awarded_by",
+              "displayName": "awarded_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "note",
+              "displayName": "note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source",
+              "displayName": "source",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "idempotency_key",
+              "displayName": "idempotency_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "62a4cf01-b3a9-4a88-b350-56bbd3b9cc1c",
+      "name": "Insert Audit Log",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2200,
+        100
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_audit_log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_id": "=evt_{{ $execution.id }}_award",
+            "actor": "={{ $('Apply Rules').first().json.row.awarded_by }}",
+            "action": "points_awarded",
+            "ref_id": "={{ $('Apply Rules').first().json.row.ledger_id }}",
+            "ai_version": "",
+            "final_version": "={{ JSON.stringify($('Apply Rules').first().json.row) }}",
+            "details": ""
+          },
+          "schema": [
+            {
+              "id": "event_id",
+              "displayName": "event_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "actor",
+              "displayName": "actor",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "action",
+              "displayName": "action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ref_id",
+              "displayName": "ref_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ai_version",
+              "displayName": "ai_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "final_version",
+              "displayName": "final_version",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "fe6883dd-3471-4383-a242-be3b4ef18bc6",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const a = $('Apply Rules').first().json;\nreturn [{ json: { status_code: a.status_code, response: a.response } }];"
+      }
+    },
+    {
+      "id": "4e3aa6f7-9e24-43fa-af78-ca73fa5e831e",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        2600,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response) }}",
+        "options": {
+          "responseCode": "={{ $json.status_code }}"
+        }
+      }
+    },
+    {
+      "id": "739fe52c-43e4-4b04-a705-e51cc3fd9098",
+      "name": "Insert Approval",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "approval_id": "={{ $json.approval_id }}",
+            "type": "points_award",
+            "status": "pending_approval",
+            "target_ref": "={{ $json.employee_id }}",
+            "payload": "={{ $json.payload_json }}",
+            "checks": "{}",
+            "created_by": "={{ $json.awarded_by }}",
+            "decided_by": "",
+            "edited_by_human": false,
+            "reason": "",
+            "decided_at": ""
+          },
+          "schema": [
+            {
+              "id": "approval_id",
+              "displayName": "approval_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "type",
+              "displayName": "type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "target_ref",
+              "displayName": "target_ref",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "checks",
+              "displayName": "checks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_by",
+              "displayName": "created_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_by",
+              "displayName": "decided_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "edited_by_human",
+              "displayName": "edited_by_human",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "boolean",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_at",
+              "displayName": "decided_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Award Points Webhook": {
+      "main": [
+        [
+          {
+            "node": "Lookup API Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup API Key": {
+      "main": [
+        [
+          {
+            "node": "Authorize and Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize and Validate": {
+      "main": [
+        [
+          {
+            "node": "Is Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid": {
+      "main": [
+        [
+          {
+            "node": "Lookup Rule",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Rule": {
+      "main": [
+        [
+          {
+            "node": "Lookup Employee",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Employee": {
+      "main": [
+        [
+          {
+            "node": "Lookup Idempotency Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Idempotency Key": {
+      "main": [
+        [
+          {
+            "node": "Lookup Employee Ledger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup Employee Ledger": {
+      "main": [
+        [
+          {
+            "node": "Apply Rules",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Rules": {
+      "main": [
+        [
+          {
+            "node": "Route Outcome",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Outcome": {
+      "main": [
+        [
+          {
+            "node": "Insert Ledger Row",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Insert Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Ledger Row": {
+      "main": [
+        [
+          {
+            "node": "Insert Audit Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Audit Log": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Approval": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
