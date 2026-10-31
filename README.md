@@ -114,10 +114,23 @@ The `n8n/` folder holds the extra features as n8n workflows calling Gemini. The 
 
 Try it with `data/employees/backend_engineer_hires.csv` (fictional) on the demo Backend Engineer job.
 
+## CV intake from every source
+
+`POST /intake/resumes` (header `X-API-Key`) receives CVs from outside tools. Each item is a file (`content_base64`), pasted `text`, or a structured `profile` (job board JSON, JSON Resume), tagged with its `source` (`email`, `drive`, `form`, `job_board`, `linkedin`, `other`) and a `source_ref` (the id in that system). Everything then goes through the same intake as a dashboard upload, and screening continues as before.
+
+- **Formats:** PDF, Word, OpenDocument, RTF, HTML, text, JSON, and photos or scans (JPG, PNG, WebP), which the AI transcribes and which need `LLM_MODE=live` (`backend/core/ingestion.py`).
+- **Hidden text:** white, tiny or off-page PDF text, hidden or white Word runs, ODT hidden text, RTF ``, and hidden HTML are kept away from the LLM and scanned on their own. An injection there is high risk and needs review.
+- **Structured profiles:** every field is turned into text and scanned, so an injection cannot hide in a JSON field.
+- **File safety:** types are checked by content, not by name; zip bombs, oversize files and invalid base64 are refused per item.
+- **Keys:** an admin creates an upload-only key on the **Sources** page. It can send CVs and nothing else. No key can ever approve.
+- **Duplicates:** the same `source` + `source_ref`, or the same file, is received once, so n8n can retry safely.
+- **Log:** every CV, accepted or refused, is in `GET /intake/log` and on the Sources page.
+
+n8n collects the CVs: import `n8n/workflows/intake-resume-collector.json` (Gmail, Google Drive, an application form, a job-board webhook). n8n only transports them; every check runs in the backend.
+
 ## Roadmap / TODO
 
-- Hidden-text detection in PDF/DOCX (white or tiny fonts, hidden runs) and zip-bomb checks
 - Signed inbound email webhook (HMAC with timestamp)
-- API key management endpoints and an audit log viewer
+- An audit log viewer
 - Real calendar and SMTP integration (today: `data/calendar.json` and a simulated outbox)
 - Better retrieval for policy Q&A (TF-IDF or embeddings)

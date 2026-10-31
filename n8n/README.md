@@ -50,6 +50,26 @@ HR admin -> /approvals/decision -> compare-and-swap lock -> send email / write l
 6. **SMTP credential.** In `api-hr-approvals-decision`, select an SMTP credential (a Mailtrap test inbox works) on both email nodes.
 7. **Publish** all workflows, then restrict "Allowed Origins (CORS)" on each webhook to your dashboard URL and `chrome-extension://<id>`.
 
+## CV intake collector
+
+`workflows/intake-resume-collector.json` collects CVs and sends them to the FastAPI backend's `POST /intake/resumes`, where every security check runs (file type, hidden text, prompt-injection scan, duplicates). n8n never calls the AI in this workflow.
+
+| Trigger | `source` | `source_ref` |
+| --- | --- | --- |
+| Gmail: new email with an attachment to the jobs address | `email` | message id + attachment |
+| Google Drive: new file in the CVs folder | `drive` | file id |
+| n8n form "Apply" | `form` | execution id |
+| Webhook `POST /webhook/intake/job-board` (header auth) | `job_board` | from the body |
+
+Setup:
+
+1. Import the workflow.
+2. In the dashboard, as admin, open **Sources** and create an upload-only key. In n8n, create a "Header Auth" credential named `HR API upload key`: name `X-API-Key`, value the key.
+3. Connect the Gmail and Google Drive credentials, set the Gmail search (`to:jobs@your-company.com`) and pick the Drive folder.
+4. Set `DEFAULT_JOB_ID` in "Build intake request", and the backend URL in "Send to HR API" (`http://host.docker.internal:8000` when n8n runs in Docker on the same machine).
+5. For the job-board webhook, create a "Header Auth" credential named `Job board webhook secret` and give the header to the job board. It sends `{ "profile" | "text" | "content_base64", "source_ref", "filename", "job_id"? }`; other fields are dropped.
+6. Activate the workflow.
+
 ## Testing
 
 Import `postman/secure-ai-hr.postman_collection.json`, set the collection variables (`base_url` = `https://<your-n8n-host>/webhook`, plus the raw keys and tokens you created). It contains happy paths and attack tests. Broadcast drafts store their `approval_id` in the collection variable for the decision requests:

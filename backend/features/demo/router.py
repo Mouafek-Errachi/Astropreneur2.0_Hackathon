@@ -48,7 +48,8 @@ def load_demo_data(body: Optional[DemoDataRequest] = None, p: Principal = Depend
     files = [(f.name, f.read_bytes()) for f in sorted((s.data_dir / "resumes").glob("*.txt"))]
     fake_resumes = generator.resumes(body.resumes, body.seed)
     files += [(r.filename, r.text.encode()) for r in fake_resumes]
-    results = [intake_resume(session, p.tenant_id, job, name, data) for name, data in files]
+    results = [intake_resume(session, p.tenant_id, job, name, data, source="demo", actor=p.subject)
+               for name, data in files]
 
     # Emails: the samples plus generated ones spread over the last 4 days. Some come from candidates.
     candidate_emails = [r.email for r in fake_resumes if not r.adversarial]

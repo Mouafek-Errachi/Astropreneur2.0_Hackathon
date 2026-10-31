@@ -75,6 +75,27 @@ class Candidate(SQLModel, table=True):
     status: str = "new"  # new | screened | shortlisted | interview | rejected
     created_at: datetime = Field(default_factory=utcnow)
     last_contact_at: Optional[datetime] = None
+    source: Optional[str] = None  # upload | email | linkedin | drive | form | job_board | other | demo (None = upload)
+    source_ref: Optional[str] = Field(default=None, index=True)  # id in the source system (Gmail id, form id...)
+
+
+class IntakeLog(SQLModel, table=True):
+    """Every resume received, accepted or refused, with where it came from and who sent it."""
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    job_id: int = Field(foreign_key="job.id", index=True)
+    source: str = "upload"
+    source_ref: str = ""
+    filename: str = ""
+    mime_type: str = ""
+    actor: str = ""
+    accepted: bool = False
+    candidate_id: Optional[int] = None
+    error: str = ""
+    risk_level: str = "none"
+    flags: str = "[]"  # JSON list of flag types
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class Email(SQLModel, table=True):

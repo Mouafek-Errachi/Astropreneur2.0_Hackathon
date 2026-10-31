@@ -3,7 +3,7 @@ import re
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # Syntax check only: EmailStr rejects reserved demo domains such as acme.test.
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+(\.[\w-]+)+$")
@@ -202,6 +202,52 @@ class CandidateOut(BaseModel):
     profile: dict
     score_breakdown: dict
     justification: str = ""
+    source: str = "upload"
+
+
+IntakeSource = Literal["email", "linkedin", "drive", "form", "job_board", "other"]
+
+
+class IntakeItem(Strict):
+    """One resume from an outside source: a file (base64), pasted text, or a structured profile. Exactly one."""
+    source: IntakeSource
+    source_ref: str = Field(default="", max_length=200)
+    filename: str = Field(default="", max_length=200)
+    content_base64: Optional[str] = Field(default=None, max_length=14_000_000)
+    text: Optional[str] = Field(default=None, max_length=50_000)
+    profile: Optional[dict] = None
+
+    @model_validator(mode="after")
+    def _one_payload(self):
+        if sum(x is not None for x in (self.content_base64, self.text, self.profile)) != 1:
+            raise ValueError("give exactly one of content_base64, text or profile")
+        return self
+
+
+class IntakeRequest(Strict):
+    job_id: int
+    items: list[IntakeItem] = Field(min_length=1, max_length=50)
+
+
+class IntakeResult(UploadResult):
+    source: str
+    source_ref: str = ""
+
+
+class IntakeLogOut(BaseModel):
+    id: int
+    job_id: int
+    source: str
+    source_ref: str
+    filename: str
+    mime_type: str
+    actor: str
+    accepted: bool
+    candidate_id: Optional[int]
+    error: str
+    risk_level: str
+    flags: list[str]
+    created_at: datetime
 
 
 class EmailIn(Strict):

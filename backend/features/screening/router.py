@@ -33,7 +33,8 @@ def _cand_out(c: Candidate) -> CandidateOut:
                         status=c.status, score=c.score, rank=c.rank, bucket=bucket(c.score), risk_level=c.risk_level,
                         needs_review=c.needs_review, llm_fallback=c.llm_fallback,
                         injection_flags=json.loads(c.injection_flags), profile=json.loads(c.profile_json),
-                        score_breakdown=breakdown, justification=breakdown.get("justification", ""))
+                        score_breakdown=breakdown, justification=breakdown.get("justification", ""),
+                        source=c.source or "upload")
 
 
 @router.post("/jobs", response_model=JobOut)
@@ -63,7 +64,7 @@ async def upload_resumes(job_id: int, files: list[UploadFile] = File(...),
     results = []
     for f in files:
         data = await f.read(s.max_upload_bytes + 1)  # never read more than the limit into memory
-        results.append(intake_resume(session, p.tenant_id, job, f.filename, data))
+        results.append(intake_resume(session, p.tenant_id, job, f.filename, data, actor=p.subject))
     audit.log(session, actor=p.subject, event="resumes.uploaded", tenant_id=p.tenant_id, target=f"job:{job.id}",
               detail={"count": len(files), "accepted": sum(r.accepted for r in results)})
     return results

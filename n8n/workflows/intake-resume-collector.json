@@ -1,0 +1,377 @@
+{
+  "name": "HR intake: collect CVs from every source",
+  "nodes": [
+    {
+      "id": "145ec37e-15ac-5185-8706-dd8a5c308766",
+      "name": "Gmail: new CV email",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "q": "has:attachment to:jobs@your-company.com"
+        },
+        "options": {
+          "downloadAttachments": true
+        }
+      },
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "id": "2a40f8ce-34d8-5047-9ad0-153827f6af44",
+      "name": "Email attachments to items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Each attached file becomes one intake item. The backend does every security check.\nconst out = [];\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n  for (const [key, bin] of Object.entries(item.binary || {})) {\n    const buffer = await this.helpers.getBinaryDataBuffer(i, key);\n    out.push({ json: {\n      source: 'email',\n      source_ref: String(item.json.id + '-' + key).slice(0, 200),\n      filename: String(bin.fileName || key).slice(0, 200),\n      content_base64: buffer.toString('base64'),\n    } });\n  }\n}\nreturn out;"
+      },
+      "notes": "source_ref = Gmail message id + attachment"
+    },
+    {
+      "id": "107c9903-ee79-59ab-b59b-bc41049083a5",
+      "name": "Drive: new file in CVs folder",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        220
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "triggerOn": "specificFolder",
+        "folderToWatch": {
+          "__rl": true,
+          "value": "",
+          "mode": "list"
+        },
+        "event": "fileCreated",
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "id": "5167faf0-323f-5d95-8c31-53ff400cafe3",
+      "name": "Download the file",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        260,
+        220
+      ],
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "id": "40b5b01c-ee58-58ed-86be-e1a4e4075502",
+      "name": "Drive file to item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        220
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Each attached file becomes one intake item. The backend does every security check.\nconst out = [];\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n  for (const [key, bin] of Object.entries(item.binary || {})) {\n    const buffer = await this.helpers.getBinaryDataBuffer(i, key);\n    out.push({ json: {\n      source: 'drive',\n      source_ref: String(item.json.id).slice(0, 200),\n      filename: String(bin.fileName || key).slice(0, 200),\n      content_base64: buffer.toString('base64'),\n    } });\n  }\n}\nreturn out;"
+      },
+      "notes": "source_ref = Drive file id"
+    },
+    {
+      "id": "0a4aea3b-638c-5e9d-a7b1-a09b237ced3d",
+      "name": "Application form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        440
+      ],
+      "parameters": {
+        "formTitle": "Apply",
+        "formDescription": "Upload your CV (PDF, Word, OpenDocument, RTF, text, or a photo).",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "CV",
+              "fieldType": "file",
+              "multipleFiles": false,
+              "acceptFileTypes": ".pdf,.docx,.odt,.rtf,.txt,.html,.json,.jpg,.jpeg,.png,.webp",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thank you, your application was received."
+            }
+          }
+        }
+      },
+      "webhookId": "9ff010d4-831d-5cff-a11a-d2f407f206d9"
+    },
+    {
+      "id": "0ced0132-92ca-564c-b92f-df72df297c66",
+      "name": "Form upload to item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        440
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Each attached file becomes one intake item. The backend does every security check.\nconst out = [];\nfor (let i = 0; i < $input.all().length; i++) {\n  const item = $input.all()[i];\n  for (const [key, bin] of Object.entries(item.binary || {})) {\n    const buffer = await this.helpers.getBinaryDataBuffer(i, key);\n    out.push({ json: {\n      source: 'form',\n      source_ref: String('form-' + $execution.id + '-' + key).slice(0, 200),\n      filename: String(bin.fileName || key).slice(0, 200),\n      content_base64: buffer.toString('base64'),\n    } });\n  }\n}\nreturn out;"
+      },
+      "notes": "source_ref = n8n execution id"
+    },
+    {
+      "id": "6667c4f9-714c-552e-bf15-f0942ca45b51",
+      "name": "Job board webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        660
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "intake/job-board",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "webhookId": "394985b6-7e99-5016-abbe-4c3daf9d3ccb",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Job board webhook secret"
+        }
+      }
+    },
+    {
+      "id": "8ae4df82-f6e2-5afa-938b-00aa3fbf3ce7",
+      "name": "Job board payload to item",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        660
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Accepts { profile | text | content_base64, source_ref, filename, job_id? } from a job board.\n// Only these fields are forwarded; anything else in the body is dropped.\nreturn $input.all().map(item => {\n  const b = item.json.body || {};\n  const one = {};\n  if (b.profile && typeof b.profile === 'object') one.profile = b.profile;\n  else if (typeof b.text === 'string') one.text = b.text;\n  else if (typeof b.content_base64 === 'string') one.content_base64 = b.content_base64;\n  return { json: {\n    job_id: Number.isInteger(b.job_id) ? b.job_id : undefined,\n    source: 'job_board',\n    source_ref: String(b.source_ref || '').slice(0, 200),\n    filename: String(b.filename || '').slice(0, 200),\n    ...one,\n  } };\n});"
+      },
+      "notes": "Whitelists the fields a job board may send"
+    },
+    {
+      "id": "a4c1623f-46da-5099-ab44-3a9d42f9775a",
+      "name": "Build intake request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        330
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "// Set the default job here. A job board may pick another job with job_id.\nconst DEFAULT_JOB_ID = 1;\nreturn $input.all().map(({ json }) => {\n  const { job_id, ...item } = json;\n  return { json: { job_id: job_id ?? DEFAULT_JOB_ID, items: [item] } };\n});"
+      },
+      "notes": "One request per CV, so one bad file never blocks the others"
+    },
+    {
+      "id": "d9bbff66-6192-5525-8774-21e4d2ccdaff",
+      "name": "Send to HR API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1060,
+        330
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/intake/resumes",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "notes": "Header X-API-Key = a key with only the resumes:upload scope (Sources page in the dashboard)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "HR API upload key"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail: new CV email": {
+      "main": [
+        [
+          {
+            "node": "Email attachments to items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Email attachments to items": {
+      "main": [
+        [
+          {
+            "node": "Build intake request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive: new file in CVs folder": {
+      "main": [
+        [
+          {
+            "node": "Download the file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download the file": {
+      "main": [
+        [
+          {
+            "node": "Drive file to item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Drive file to item": {
+      "main": [
+        [
+          {
+            "node": "Build intake request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Application form": {
+      "main": [
+        [
+          {
+            "node": "Form upload to item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Form upload to item": {
+      "main": [
+        [
+          {
+            "node": "Build intake request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job board webhook": {
+      "main": [
+        [
+          {
+            "node": "Job board payload to item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Job board payload to item": {
+      "main": [
+        [
+          {
+            "node": "Build intake request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build intake request": {
+      "main": [
+        [
+          {
+            "node": "Send to HR API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

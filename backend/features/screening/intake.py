@@ -12,37 +12,53 @@ from backend.core.sanitizer import safe_display_filename
 from backend.features.screening.parser import parse_resume
 from backend.features.screening.ranking import rank
 from backend.features.screening.scorer import score
-from backend.models import Candidate, Job
+from backend.models import Candidate, IntakeLog, Job
 from backend.schemas import EMAIL_RE, CandidateProfile, UploadResult
 
 
+def intake_resume(session: Session, tenant_id: int, job: Job, filename: str, data: bytes, *, source: str = "upload",
+                  source_ref: str = "", actor: str = "") -> UploadResult:
+    """Every source ends here: same file checks, extraction, injection scan and duplicate checks. Each resume
+    received, accepted or refused, is written to the intake log."""
+    result, mime = _intake(session, tenant_id, job, filename, data, source, source_ref)
+    session.add(IntakeLog(tenant_id=tenant_id, job_id=job.id, source=source, source_ref=source_ref,
+                          filename=result.filename, mime_type=mime, actor=actor, accepted=result.accepted,
+                          candidate_id=result.candidate_id, error=result.error or "", risk_level=result.risk_level,
+                          flags=json.dumps(result.flags)))
+    session.commit()
+    return result
 
-def intake_resume(session: Session, tenant_id: int, job: Job, filename: str, data: bytes) -> UploadResult:
+
+def _intake(session: Session, tenant_id: int, job: Job, filename: str, data: bytes, source: str,
+            source_ref: str) -> tuple[UploadResult, str]:
     name = safe_display_filename(filename)
     digest = hashlib.sha256(data).hexdigest()
     same = select(Candidate.id).where(Candidate.tenant_id == tenant_id, Candidate.job_id == job.id)
+    if source_ref and (dup := session.exec(same.where(Candidate.source == source,
+                                                      Candidate.source_ref == source_ref)).first()) is not None:
+        return UploadResult(filename=name, accepted=False, error=f"already received as candidate #{dup}"), ""
     if (dup := session.exec(same.where(Candidate.sha256 == digest)).first()) is not None:
-        return UploadResult(filename=name, accepted=False, error=f"duplicate of candidate #{dup}")
+        return UploadResult(filename=name, accepted=False, error=f"duplicate of candidate #{dup}"), ""
     qpath = storage.quarantine(data)
     try:
         doc = ingest(data)
     except IngestionError as e:
         storage.discard(qpath)
-        return UploadResult(filename=name, accepted=False, error=str(e))
+        return UploadResult(filename=name, accepted=False, error=str(e)), ""
     if (dup := session.exec(same.where(Candidate.text == doc.text)).first()) is not None:
         storage.discard(qpath)
-        return UploadResult(filename=name, accepted=False, error=f"same content as candidate #{dup}")
-    flags = injection.scan(doc.text, sanitizer_notes=doc.notes)
+        return UploadResult(filename=name, accepted=False, error=f"same content as candidate #{dup}"), doc.mime
+    flags = injection.scan(doc.text, hidden_text=doc.hidden_text, sanitizer_notes=doc.notes)
     risk = injection.risk_level(flags)
     cand = Candidate(tenant_id=tenant_id, job_id=job.id, original_filename=name,
                      stored_filename=storage.promote(qpath, doc.mime), mime_type=doc.mime, sha256=digest,
                      text=doc.text, injection_flags=json.dumps([f.to_dict() for f in flags]), risk_level=risk,
-                     needs_review=risk in ("medium", "high"))
+                     needs_review=risk in ("medium", "high"), source=source, source_ref=source_ref or None)
     session.add(cand)
     session.commit()
     session.refresh(cand)
     return UploadResult(filename=name, accepted=True, candidate_id=cand.id, risk_level=risk,
-                        flags=[f.type for f in flags])
+                        flags=[f.type for f in flags]), doc.mime
 
 
 def verified_email(email: str, text: str) -> str:

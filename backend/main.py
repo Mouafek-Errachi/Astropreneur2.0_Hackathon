@@ -18,6 +18,7 @@ from backend.features.demo.router import router as demo_router
 from backend.features.email_digest.router import router as email_router
 from backend.features.employee_qa.router import router as qa_router
 from backend.features.followups.router import router as followups_router
+from backend.features.intake.router import router as intake_router
 from backend.features.replies.router import router as replies_router
 from backend.features.scheduling.router import router as scheduling_router
 from backend.features.screening.router import router as screening_router
@@ -86,5 +87,5 @@ def health():
 
 
 for r in (auth_router, screening_router, email_router, replies_router, approvals_router,
-          followups_router, scheduling_router, qa_router, demo_router):
+          followups_router, scheduling_router, qa_router, demo_router, intake_router):
     app.include_router(r)
