@@ -1,0 +1,21 @@
+┌────────────────────────────────────────────────────────────────────┐
+│ L1 PRESENTATION   Streamlit (dashboard/)  · thin client, no rules  │
+│  Inbox-by-urgency │ HITL Queue │ AI Firewall │ Candidate Chat │ Ops │
+└───────────────▲────────────────────────────────────────────────────┘
+                │ REST (JWT) · WS /ws/security               ╔═════════════╗
+┌───────────────┴──────────────────────────────────────╢ L5 SECURITY ║
+│ L2 ORCHESTRATION  backend/orchestration/ + n8n/        ║ backend/    ║
+│  Ingest │ Screening │ Inbox/Reply │ Scheduling │ HR ops ║ security/   ║
+│  n8n: IMAP/cron/webhooks -> FastAPI (scoped API key)  ║             ║
+└───────────────┬──────────────────────────────────────╢ Gateway     ║
+                │ typed calls (Pydantic)                ║ Guard       ║
+┌───────────────▼──────────────────────────────────────╢ Validator   ║
+│ L3 AI AGENTS      backend/agents/ · Gemini | Grok | mock║ Audit       ║
+│  Classifier │ Ranker+Justifier │ Drafter │ Policy RAG   ║ Events      ║
+│  Bias Auditor │ Candidate Chat │ Interview/Broadcast/Ticket║ Executor  ║
+└───────────────┬──────────────────────────────────────╢             ║
+                │ SQL + vector search                   ║             ║
+┌───────────────▼──────────────────────────────────────╢             ║
+│ L4 DATA           backend/data/ · SQLite | Postgres     ╚═════════════╝
+│  Pipeline │ Embeddings (pgvector-ready) │ Approvals │ Audit │ Files
+└────────────────────────────────────────────────────────────────────┘

@@ -1,0 +1,8 @@
+Heidi Owen
+stephaniethomas@example.com | +1-470-921-3556x909
+Software Developer with 10 years of experience.
+Skills: FastAPI, Linux, Pandas, Java
+Education: MBA
+
+Experience
+- Watson-Hines: Maximize global deliverables using Pandas.

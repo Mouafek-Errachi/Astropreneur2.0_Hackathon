@@ -1,0 +1,20 @@
+flowchart LR
+  subgraph Browser
+    UI["Streamlit dashboard"]
+    PUB["Candidate: magic-link page"]
+  end
+  subgraph Compose["docker-compose network"]
+    DSH["dashboard: Streamlit"]
+    API["api: FastAPI (gateway + guard + workflows + executor)"]
+    PGD[("postgres + pgvector (profile: postgres)")]
+    MH["mailhog: fake SMTP (profile: mail)"]
+    N8N["n8n: orchestration (profile: n8n)"]
+  end
+  LLM["Gemini API / xAI Grok API"]
+
+  UI --> DSH --> API
+  PUB --> API
+  N8N -- "API key / signed webhook" --> API
+  API --> PGD
+  API --> MH
+  API --> LLM

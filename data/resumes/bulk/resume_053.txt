@@ -1,0 +1,10 @@
+Jacob Preston
+ykline@example.com | 627-775-8416x16928
+Data Analyst with 4 years of experience.
+Skills: Python, Linux, Communication
+Education: BSc Mathematics
+
+Experience
+- Miller Ltd: Envisioneer extensible systems using Python.
+- Robbins, Jackson and Wallace: Grow revolutionary convergence using Python.
+- Bolton, Hill and Whitney: Streamline intuitive web services using Communication.

@@ -1,0 +1,10 @@
+Adam Burgess
+davidpatel@example.com | 988.351.6060
+Junior Developer with 1 years of experience.
+Skills: AWS, Azure, Java, Git, Pandas, Linux
+Education: BSc Mathematics
+
+Experience
+- Johnston-Berry: Unleash next-generation technologies using Linux.
+- Sullivan LLC: Leverage ubiquitous relationships using Pandas.
+- Kim Inc: Incentivize user-centric applications using Git.

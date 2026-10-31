@@ -1,0 +1,10 @@
+Donald Smith
+danagreen@example.com | 001-478-868-0112x8059
+Site Reliability Engineer with 8 years of experience.
+Skills: Java, FastAPI, AWS, JavaScript, Docker
+Education: MSc Computer Science
+
+Experience
+- Williams LLC: Productize revolutionary convergence using AWS.
+- Fleming Ltd: Transform synergistic schemas using Docker.
+- Dickson-Brady: Re-contextualize web-enabled communities using FastAPI.

@@ -1,0 +1,9 @@
+Sherry Wood
+samueldaniels@example.com | 698-608-4124x1182
+Site Reliability Engineer with 10 years of experience.
+Skills: Pandas, Docker, JavaScript, Azure
+Education: MBA
+
+Experience
+- Clark, Cooper and Watts: Iterate back-end mindshare using Pandas.
+- King-Odonnell: Streamline e-business functionalities using Pandas.

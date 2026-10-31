@@ -1,5 +1,7 @@
 # Secure AI HR System: n8n + Gemini backend
 
+> **FastAPI integration:** n8n is now the orchestration layer (L2) in front of the FastAPI core. See [FASTAPI_INTEGRATION.md](FASTAPI_INTEGRATION.md).
+
 Backend for the Secure AI HR System hackathon, built as n8n webhook workflows calling Gemini. The rule everywhere: **the agent executes, the human decides**. Gemini only proposes; code checks every output, and nothing is sent or recorded until an HR admin approves it.
 
 All data in this folder is fictional. Keys and tokens are placeholders.

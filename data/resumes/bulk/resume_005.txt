@@ -1,0 +1,9 @@
+Vanessa Patel
+davidalvarez@example.com | +1-624-889-6383
+Full-Stack Developer with 1 years of experience.
+Skills: React, Linux, SQL
+Education: MSc Computer Science
+
+Experience
+- Santos, Kim and Holmes: Embrace interactive e-services using Linux.
+- Morgan PLC: Engage bleeding-edge applications using Linux.

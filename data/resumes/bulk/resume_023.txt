@@ -1,0 +1,8 @@
+Joshua Gill
+jamesrodgers@example.com | 298-494-1343x524
+Full-Stack Developer with 1 years of experience.
+Skills: Docker, Leadership, Java, Pandas
+Education: BSc Mathematics
+
+Experience
+- Williams-Brown: Envisioneer end-to-end functionalities using Leadership.

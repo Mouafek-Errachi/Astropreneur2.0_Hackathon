@@ -1,0 +1,93 @@
+"""Strict schemas every agent output must validate against (extra fields rejected, lengths capped)."""
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class CandidateProfile(Strict):
+    name: str = Field(default="", max_length=120)
+    email: str = Field(default="", max_length=200)
+    current_title: str = Field(default="", max_length=150)
+    years_experience: float = Field(default=0, ge=0, le=60)
+    skills: list[str] = Field(default_factory=list, max_length=80)
+    education: str = Field(default="", max_length=200)
+    languages: list[str] = Field(default_factory=list, max_length=20)
+    summary: str = Field(default="", max_length=800)
+
+    @field_validator("skills", "languages")
+    @classmethod
+    def _dedupe(cls, v: list[str]) -> list[str]:
+        out, seen = [], set()
+        for item in (str(x).strip()[:60] for x in v):
+            if item and item.lower() not in seen:
+                seen.add(item.lower())
+                out.append(item)
+        return out
+
+
+class FitJustification(Strict):
+    strengths: list[str] = Field(default_factory=list, max_length=6)
+    gaps: list[str] = Field(default_factory=list, max_length=6)
+    summary: str = Field(default="", max_length=600)
+
+
+class EmailClassification(Strict):
+    category: Literal["application", "candidate_question", "interview_scheduling", "employee_request",
+                      "policy_question", "spam_phishing", "other"]
+    urgency: Literal["high", "medium", "low"]
+    summary: str = Field(max_length=400)
+    needs_reply: bool
+    injection_attempt_observed: bool = False
+
+
+class DraftReply(Strict):
+    subject: str = Field(max_length=200)
+    body: str = Field(max_length=4000)
+
+
+class PolicyAnswer(Strict):
+    answer: str = Field(max_length=2500)
+    cited_sources: list[str] = Field(default_factory=list, max_length=6)
+    confidence: Literal["high", "medium", "low"]
+    escalate_to_hr: bool
+
+
+class CandidateChatAnswer(Strict):
+    answer: str = Field(max_length=2000)
+    evidence: list[str] = Field(default_factory=list, max_length=5)
+    not_in_resume: bool = False
+
+
+class InterviewAssist(Strict):
+    weakness_detected: bool
+    competency: str = Field(default="", max_length=80)
+    severity: Literal["none", "low", "medium", "high"] = "none"
+    detected_gap: str = Field(default="", max_length=200)
+    evidence: str = Field(default="", max_length=150)
+    suggested_probing_questions: list[str] = Field(default_factory=list, max_length=3)
+    injection_attempt_observed: bool = False
+
+
+class BroadcastDraft(Strict):
+    subject: str = Field(max_length=70)
+    body: str = Field(max_length=3000)
+    key_points: list[str] = Field(default_factory=list, max_length=12)
+    missing_info: list[str] = Field(default_factory=list, max_length=8)
+    injection_attempt_observed: bool = False
+
+
+TICKET_CATEGORIES = ["Leave", "Payroll", "Legal Document", "Benefits", "Policy Question", "Sensitive", "General HR"]
+
+
+class TicketTriage(Strict):
+    category: Literal["Leave", "Payroll", "Legal Document", "Benefits", "Policy Question", "Sensitive", "General HR"]
+    priority: Literal["low", "normal", "high"]
+    requires_hr_action: bool
+    hr_action_summary: str = Field(default="", max_length=300)
+    suggested_response: str = Field(default="", max_length=1200)
+    citations: list[str] = Field(default_factory=list, max_length=5)
+    injection_attempt_observed: bool = False

@@ -1,18 +1,48 @@
+# Default:      docker compose up --build                 -> api + dashboard (SQLite)
+# Full stack:   docker compose --profile postgres --profile mail --profile n8n up --build
+#               then set DATABASE_URL / SMTP_HOST in .env as shown in .env.example
 services:
-  backend:
+  api:
     build: .
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
     env_file: [.env]
     environment:
-      DATABASE_URL: sqlite:////app/var/app.db
+      DATABASE_URL: ${DATABASE_URL:-sqlite:////app/var/app.db}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8000}
     ports: ["8000:8000"]
     volumes: ["hr-var:/app/var"]
+
   dashboard:
     build: .
     command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
     environment:
-      API_URL: http://backend:8000
+      API_URL: http://api:8000
     ports: ["8501:8501"]
-    depends_on: [backend]
+    depends_on: [api]
+
+  postgres:
+    profiles: ["postgres"]
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: hr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hr-dev-password}
+      POSTGRES_DB: hr
+    volumes: ["hr-pg:/var/lib/postgresql/data"]
+
+  mailhog:
+    profiles: ["mail"]
+    image: mailhog/mailhog:v1.0.1
+    ports: ["8025:8025"]   # web UI to see the emails the executor sent
+
+  n8n:
+    profiles: ["n8n"]
+    image: n8nio/n8n:1.80.0
+    ports: ["5678:5678"]
+    environment:
+      HR_API_URL: http://api:8000
+    volumes: ["hr-n8n:/home/node/.n8n"]
+
 volumes:
   hr-var:
+  hr-pg:
+  hr-n8n:

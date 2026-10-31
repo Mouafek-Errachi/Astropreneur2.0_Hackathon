@@ -1,0 +1,9 @@
+Sabrina Austin
+lynchdiane@example.com | 001-840-324-4550x229
+Data Analyst with 3 years of experience.
+Skills: Docker, Azure, JavaScript, Java, Linux, FastAPI
+Education: BSc Mathematics
+
+Experience
+- Figueroa Inc: Evolve killer architectures using Azure.
+- Chavez-Moore: Monetize world-class networks using Azure.

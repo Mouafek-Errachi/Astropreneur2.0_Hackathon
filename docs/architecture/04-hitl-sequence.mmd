@@ -1,0 +1,31 @@
+sequenceDiagram
+  participant C as Candidate
+  participant N as n8n (IMAP / webhook)
+  participant IG as Injection Guard
+  participant WF as Workflow (orchestration/)
+  participant AG as AI Agent (Gemini | Grok)
+  participant OV as Output Validator
+  participant DB as Database
+  participant UI as Recruiter UI (Streamlit)
+  participant EX as Action Executor
+
+  C->>N: Email + resume PDF (may hide payload)
+  N->>IG: POST /webhooks/email (HMAC + timestamp)
+  IG->>IG: Magic bytes, strip hidden text, sanitize, scan
+  alt high-risk payload
+    IG->>DB: quarantine + SecurityEvent + audit
+    IG-->>UI: AI Firewall lights up (events / WS)
+  else clean or low risk
+    IG->>WF: sanitized content
+    WF->>AG: classify + draft (no tools, JSON only, untrusted text fenced)
+    AG->>OV: DraftReply JSON (Pydantic-validated)
+    OV->>DB: ProposedAction(status=PENDING, risk flags)
+    Note over WF: workflow pauses (interrupt)
+    UI->>DB: fetch pending queue
+    UI->>EX: approve(action_id, edits) + recruiter JWT
+    EX->>EX: role + status==PENDING, sign Approval(payload_hash)
+    EX->>EX: verify signature + payload hash
+    EX->>C: send email (MailHog in demo, outbox otherwise)
+    EX->>DB: SentEmail + hash-chained audit entry
+    EX->>WF: resume hook (mark email handled)
+  end

@@ -26,6 +26,9 @@ def call(method: str, path: str, **kwargs):
         st.session_state.pop("token", None)
         st.warning("Session expired, please log in again.")
         st.stop()
+    if r.status_code == 403 and method == "GET":
+        st.info("Your role does not have access to this page.")
+        st.stop()
     if not r.ok:
         st.error(f"{r.status_code}: {r.json().get('detail', r.text) if r.headers.get('content-type','').startswith('application/json') else r.text}")
         return None

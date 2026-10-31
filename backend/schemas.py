@@ -1,110 +1,25 @@
-"""API request/response schemas and the strict schemas every LLM output must validate against."""
+"""API request bodies. Unknown fields are rejected (extra="forbid"), as in the n8n field whitelist.
+Agent output schemas live in backend/agents/schemas.py."""
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
-# ---------------------------------------------------------------- LLM outputs
-class CandidateProfile(Strict):
-    name: str = Field(default="", max_length=120)
-    email: str = Field(default="", max_length=200)
-    phone: str = Field(default="", max_length=50)
-    current_title: str = Field(default="", max_length=150)
-    years_experience: float = Field(default=0, ge=0, le=60)
-    skills: list[str] = Field(default_factory=list, max_length=80)
-    education: str = Field(default="", max_length=200)
-    languages: list[str] = Field(default_factory=list, max_length=20)
-    summary: str = Field(default="", max_length=800)
-
-    @field_validator("skills", "languages")
-    @classmethod
-    def _clean_list(cls, v: list[str]) -> list[str]:
-        out, seen = [], set()
-        for item in v:
-            item = str(item).strip()[:60]
-            if item and item.lower() not in seen:
-                seen.add(item.lower())
-                out.append(item)
-        return out
-
-
-class FitAssessment(Strict):
-    strengths: list[str] = Field(default_factory=list, max_length=6)
-    gaps: list[str] = Field(default_factory=list, max_length=6)
-    rationale: str = Field(default="", max_length=900)
-
-
-EmailCategory = Literal[
-    "application",
-    "candidate_question",
-    "interview_scheduling",
-    "employee_request",
-    "policy_question",
-    "spam_phishing",
-    "other",
-]
-
-
-class EmailClassification(Strict):
-    category: EmailCategory
-    priority: Literal["high", "medium", "low"]
-    summary: str = Field(max_length=400)
-    needs_reply: bool
-
-
-class DigestSummary(Strict):
-    headline: str = Field(max_length=300)
-    bullets: list[str] = Field(default_factory=list, max_length=10)
-
-
-class DraftReply(Strict):
-    subject: str = Field(max_length=200)
-    body: str = Field(max_length=4000)
-
-
-class QAAnswer(Strict):
-    answer: str = Field(max_length=2500)
-    cited_sources: list[str] = Field(default_factory=list, max_length=6)
-    confidence: Literal["high", "medium", "low"]
-    escalate_to_hr: bool
-
-
-# ---------------------------------------------------------------- API
 class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     role: str
-    tenant_id: int
     email: str
-
-
-class Me(BaseModel):
-    email: str
-    role: str
-    tenant_id: int
-    kind: str
-    scopes: list[str]
 
 
 class ApiKeyCreate(Strict):
     name: str = Field(min_length=1, max_length=80)
-    scopes: list[str]
-
-
-class ApiKeyOut(BaseModel):
-    id: int
-    name: str
-    prefix: str
-    scopes: list[str]
-    active: bool
-    created_at: datetime
-    last_used_at: Optional[datetime] = None
-    key: Optional[str] = None  # only returned once, at creation
+    scopes: list[str] = Field(min_length=1)
 
 
 class JobCreate(Strict):
@@ -115,43 +30,6 @@ class JobCreate(Strict):
     min_years: float = Field(default=0, ge=0, le=40)
 
 
-class JobOut(BaseModel):
-    id: int
-    title: str
-    description: str
-    required_skills: list[str]
-    nice_to_have: list[str]
-    min_years: float
-    candidate_count: int = 0
-
-
-class UploadResult(BaseModel):
-    filename: str
-    accepted: bool
-    candidate_id: Optional[int] = None
-    error: Optional[str] = None
-    risk_level: str = "none"
-    flags: list[str] = []
-
-
-class CandidateOut(BaseModel):
-    id: int
-    job_id: int
-    name: str
-    email: str
-    original_filename: str
-    status: str
-    score: Optional[float]
-    rank: Optional[int]
-    bucket: Optional[str] = None
-    risk_level: str
-    needs_review: bool
-    llm_fallback: bool
-    injection_flags: list[dict]
-    profile: dict
-    score_breakdown: dict
-
-
 class EmailIn(Strict):
     sender: EmailStr
     subject: str = Field(default="", max_length=300)
@@ -160,53 +38,24 @@ class EmailIn(Strict):
     received_at: Optional[datetime] = None
 
 
-class EmailOut(BaseModel):
-    id: int
-    sender: str
-    subject: str
-    body: str
-    received_at: datetime
-    category: Optional[str]
-    priority: Optional[str]
-    summary: str
-    needs_reply: bool
-    risk_level: str
-    injection_flags: list[dict]
-    handled: bool
-
-
-class CandidateDraftRequest(Strict):
-    kind: Literal["rejection", "invitation", "acknowledgement"]
-
-
 class DecisionRequest(Strict):
     decision: Literal["shortlisted", "interview", "rejected"]
     note: str = Field(default="", max_length=1000)
 
 
-class ActionOut(BaseModel):
-    id: int
-    type: str
-    status: str
-    title: str
-    rationale: str
-    payload: dict
-    risk_level: str
-    risk_flags: list[dict]
-    created_by: str
-    created_at: datetime
-    decided_by: Optional[str]
-    decided_at: Optional[datetime]
-    decision_note: str
-    executed_at: Optional[datetime]
-    result: str
+class CandidateEmailRequest(Strict):
+    kind: Literal["rejection", "acknowledgement", "reminder"]
+
+
+class ChatRequest(Strict):
+    question: str = Field(min_length=3, max_length=500)
 
 
 class ApproveRequest(Strict):
     note: str = Field(default="", max_length=1000)
     edited_subject: Optional[str] = Field(default=None, max_length=200)
     edited_body: Optional[str] = Field(default=None, max_length=8000)
-    selected_slot: Optional[int] = Field(default=None, ge=0, le=10)
+    selected_slots: Optional[list[dict]] = None
     acknowledge_risk: bool = False
 
 
@@ -215,20 +64,39 @@ class RejectRequest(Strict):
 
 
 class ScheduleRequest(Strict):
-    candidate_id: int
+    application_id: str
     interviewer: str = Field(min_length=1, max_length=120)
     duration_minutes: int = Field(default=45, ge=15, le=240)
     days_ahead: int = Field(default=7, ge=1, le=30)
+
+
+class ChooseSlot(Strict):
+    slot_index: int = Field(ge=0, le=10)
 
 
 class AskRequest(Strict):
     question: str = Field(min_length=3, max_length=1000)
 
 
-class AskResponse(BaseModel):
-    answer: str
-    citations: list[dict]
-    confidence: str
-    escalate_to_hr: bool
-    flags: list[dict] = []
-    llm_fallback: bool = False
+class TicketCreate(Strict):
+    request_text: str = Field(min_length=10, max_length=3000)
+
+
+class BroadcastRequest(Strict):
+    target_team: str = Field(pattern=r"^[a-z_]{2,40}$")
+    message_prompt: str = Field(min_length=10, max_length=3000)
+
+
+class AwardRequest(Strict):
+    employee_id: str = Field(pattern=r"^emp_\d{3,6}$")
+    action_type: str = Field(pattern=r"^[a-z_]{2,40}$")
+    note: str = Field(default="", max_length=200)
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
+
+
+class InterviewAssistRequest(Strict):
+    job_role: str = Field(min_length=2, max_length=120)
+    competencies: list[str] = Field(default_factory=list, max_length=10)
+    resume_summary: str = Field(default="", max_length=2000)
+    previous_chunk: str = Field(default="", max_length=4000)
+    current_chunk: str = Field(min_length=5, max_length=4000)

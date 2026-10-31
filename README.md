@@ -1,52 +1,91 @@
 # Secure AI HR System
 
-Hackathon prototype (ASTROPRENEUR 2.0): AI agents that take over daily HR tasks — resume screening, inbox triage, reply drafting, follow-ups, interview scheduling, and policy Q&A — while staying secure.
+Hackathon prototype (ASTROPRENEUR 2.0): AI agents that take over daily HR work — resume screening and ranking, inbox triage by urgency, reply drafting, follow-ups, interview scheduling, policy Q&A, employee tickets, team broadcasts and recognition points — while staying secure against the untrusted content they read.
 
-**Golden rule: the agent executes, the human decides.** Agents only *propose* actions. Nothing is sent or recorded until a human approves it in the approval queue (`backend/core/approvals.py` is the only code path that sends or records).
+**Golden rule: the agent executes, the human decides.** Agents only *propose* actions. Nothing is sent or recorded until a human approves it. The approval is signed, then verified by the executor, the only component that can send mail or change records.
 
-## Status
-
-This is the **basic structure**. Every feature has a working minimal version. `TODO` comments mark the places to improve.
-
-## Stack
-
-- **Backend:** FastAPI, SQLModel (SQLite by default), Pydantic
-- **Dashboard:** Streamlit, a thin client that only calls the API
-- **LLM:** `anthropic` SDK behind one wrapper (`backend/core/llm.py`). `LLM_MODE=mock` runs everything without an API key.
-- **Security:** JWT and bcrypt for users, hashed API keys for integrations, role scopes, tenant scoping, slowapi rate limits, magic-byte file checks, a prompt-injection scanner, and a hash-chained audit log
-
-## Quick start (local)
+## Quick start
 
 ```bash
-python -m venv .venv
-```
-
-```bash
-.venv/Scripts/pip install -r requirements.txt
+.venv/Scripts/python -m pip install -r requirements.txt
 ```
 
 ```bash
 cp .env.example .env
 ```
 
-Then start the backend and the dashboard together with one command (Ctrl+C stops both):
-
 ```bash
 .venv/Scripts/python run.py
 ```
 
-On Windows you can also double-click `run.bat`.
+`run.py` starts the API and the dashboard together and opens http://localhost:8501. Ctrl+C stops both. On Windows you can also double-click `run.bat`.
 
-- API docs: http://localhost:8000/docs
-- Dashboard: http://localhost:8501
+1. Log in as `admin@acme.test` (passwords are in `.env.example`) and click **Load demo data**. This loads a job, resumes including 6 attack files, and emails.
+2. Log in as `recruiter@acme.test`, go to **Screening**, and click **Run screening**.
+3. Queue a decision or an email, then approve it in **Approvals**.
+4. Watch **AI Firewall**: it shows the attacks the guard caught.
 
-Demo users (passwords are in `.env.example`): `admin@acme.test`, `recruiter@acme.test`, `viewer@acme.test`.
+API docs: http://127.0.0.1:8000/docs
 
-## Docker
+| Account | Role |
+|---|---|
+| `admin@acme.test` | Everything, plus audit log, API keys and demo data |
+| `recruiter@acme.test` | Screens, drafts and approves |
+| `viewer@acme.test` | Read only |
+| `yasmine.b@hr-demo.test` | Employee: asks HR, opens tickets |
+
+To generate 60 more realistic resumes (PDF, DOCX and TXT), run the command below, then tick "bulk" when loading the demo data:
 
 ```bash
-docker compose up --build
+.venv/Scripts/python scripts/generate_demo_data.py
 ```
+
+## Architecture
+
+Five layers (diagrams in [docs/architecture/](docs/architecture/)):
+
+| Layer | Where | What |
+|---|---|---|
+| L1 Presentation | `dashboard/` | Streamlit thin client: Inbox by urgency, Screening (with candidate chat), Approvals, Scheduling, Follow-ups, Ask HR, HR Ops, AI Firewall |
+| L2 Orchestration | `backend/orchestration/`, `n8n/` | Workflows: ingestion, screening, inbox/reply, scheduling (magic links), follow-ups, HR ops. Each one pauses on a pending action and resumes after the human decision. n8n handles triggers (IMAP, cron, webhooks) and calls the API with a scoped key, see [n8n/FASTAPI_INTEGRATION.md](n8n/FASTAPI_INTEGRATION.md). |
+| L3 AI Agents | `backend/agents/` | Classifier, Ranker + Justifier, Reply Drafter, Policy RAG, Bias Auditor, Candidate Chat, Interview co-pilot, Broadcast writer, Ticket triage. They have no tools and return JSON only. |
+| L4 Data | `backend/data/` | SQLModel on SQLite (default) or Postgres. UUID keys. Embeddings are pgvector-ready. Files are quarantined, then stored under UUID names. |
+| L5 Security | `backend/security/` | Gateway, Injection Guard, Output Validator, Executor, Audit, Security events |
+
+```
+backend/
+  main.py  config.py  schemas.py
+  api/            routes: auth, recruiting, inbox, approvals, scheduling, hr, security
+  orchestration/  workflow (propose/resume), ingestion, screening, inbox, scheduling, followups, hr_ops, seed
+  agents/         llm (Gemini | Grok | mock), schemas, classifier, ranker, drafter, policy_rag, bias_auditor, candidate_chat, hr_ops
+  data/           models, db, storage, vectors
+  security/       gateway, guard/ (files, sanitizer, injection), validator, executor, audit, events
+  tests/          security, guard, human in the loop, end-to-end pipeline
+dashboard/        app.py + pages/
+data/             sample job, resumes (incl. attacks), emails, interviewer calendar
+n8n/              n8n workflows + seed tables (shared with FastAPI) + Postman tests
+scripts/          generate_demo_data.py
+docs/architecture/
+```
+
+The HR reference data (employees, teams, points rules, policy sections) comes from the n8n seed tables in `n8n/data/`, so the n8n workflows and the FastAPI core share one dataset.
+
+## LLM providers
+
+Set `LLM_PROVIDER` to `gemini`, `grok` or `mock`. `LLM_FALLBACK_PROVIDER` is optional. Every output is validated against a strict Pydantic schema and retried when invalid. If the providers fail, the agent falls back to a deterministic version, so a batch of 100 resumes never breaks; those rows show `llm_fallback`. `mock` needs no API key and is what the tests use.
+
+## Security design
+
+| Threat | Defence |
+|---|---|
+| Prompt injection in resumes and emails | The guard sanitises text (NFKC; zero-width, bidi, tag characters and HTML removed), then scans for override, role-hijack, prompt-leak, score-manipulation, exfiltration and fake-markup patterns, including base64-encoded ones. Untrusted text is fenced in `<untrusted_input>` tags. High-risk email is **quarantined** and never reaches an agent. |
+| Hidden text (white or 1pt fonts in PDFs, hidden runs in DOCX) | Extracted separately and **never sent to the LLM**. It is shown to the human and flagged as high risk. |
+| Score manipulation | The LLM only extracts facts. The score is computed in code from the job criteria. The bias auditor re-scores with identity masked. |
+| Malicious files | Type is checked by magic bytes (not the extension). Size, page-count and zip-bomb limits apply. Files go to quarantine first, then to UUID names in a non-public directory. |
+| Bad agent output | Strict schemas, a link allow-list, a fact check for invented figures and links (broadcasts), and citations that must exist (policy Q&A). The agent never chooses an email recipient. |
+| Unapproved actions | Every send or record is a `ProposedAction`. A human `Approval` is HMAC-signed over the payload hash; the executor verifies it and runs the action once (409 on a second decision). High risk needs explicit acknowledgement. Broadcasts need a second person (four-eyes). |
+| Web and API | JWT for people and hashed, scoped API keys for n8n. Machine keys can never approve. RBAC scopes and tenant-scoped queries (404 across tenants). Unknown fields return 422. Rate limits, CORS, security headers, and an HMAC-signed webhook with replay protection. Ticket identity comes from the token, never the request body. |
+| Tampering and accountability | Hash-chained audit log with a verify endpoint. The security event feed powers the AI Firewall page (REST, plus a WebSocket at `/ws/security`). |
 
 ## Tests
 
@@ -54,36 +93,19 @@ docker compose up --build
 .venv/Scripts/python -m pytest -q
 ```
 
-## Layout
+The tests cover RBAC, API keys, tenant isolation, the signed webhook, and injection and hidden-text detection (PDF and DOCX). They check the human-in-the-loop guarantees: no send without approval, single execution, payload tampering detected, quarantine, and four-eyes. They also screen 80 PDF/DOCX/TXT resumes end to end, and test the scheduling magic link, tickets, points and policy Q&A.
 
-```
-backend/
-  main.py, config.py, db.py, models.py, schemas.py
-  core/        ingestion, sanitizer, injection, llm, storage, security, approvals, audit
-  features/    auth, screening, email_digest, replies, approvals, followups, scheduling, employee_qa
-  tests/
-dashboard/     app.py + pages/ (Screening, Inbox, Approvals, Followups, Scheduling, Ask HR)
-data/          sample resumes (incl. adversarial), jobs, emails, policies, calendar.json
-n8n/           alternative backend: n8n webhook workflows + Gemini, seed tables, Postman tests
+## Docker
+
+```bash
+docker compose up --build
 ```
 
-The `n8n/` folder is a second implementation of the same API as n8n workflows. See [n8n/README.md](n8n/README.md) for setup and the attack tests.
+Optional profiles: `--profile postgres` (pgvector), `--profile mail` (MailHog UI on :8025), `--profile n8n` (:5678). See `.env.example` for the matching settings.
 
-## Security design (so far)
+## Roadmap
 
-| Layer | What is in place |
-|---|---|
-| AI security | Untrusted text is sanitised (zero-width, bidi, and HTML stripped), scanned for injection patterns, wrapped in `<untrusted_document>` tags, and the LLM output is validated against strict Pydantic schemas. Scores are computed deterministically from the extracted facts, not taken from the LLM. The LLM never chooses email recipients. |
-| Human in the loop | Every send or record goes through `Action` (pending), then a human approves, then the action executes once. High-risk actions need an explicit risk acknowledgement. API keys can never approve. |
-| System security | Uploads are quarantined, then stored under UUID names in a non-public directory. File types are checked by magic bytes. Size and page limits are enforced. |
-| Web security | JWT auth, RBAC scopes, tenant-scoped queries (404 on cross-tenant access), a login rate limit, restricted CORS, and security headers. |
-
-## Roadmap / TODO
-
-- Hidden-text detection in PDF/DOCX (white or tiny fonts, hidden runs) and zip-bomb checks
-- Signed inbound email webhook (HMAC with timestamp)
-- API key management endpoints and an audit log viewer
-- Candidate reply templates (rejection or invitation) and reminder drafts
-- Execute `schedule_interview` into calendar events
-- Better retrieval for policy Q&A (TF-IDF or embeddings)
-- A generator for 50–100 fake resumes, and load tests
+- Run the executor in its own container (the only one with mail credentials) and the agents in a worker without them.
+- Use LangGraph `interrupt()` and a checkpointer for multi-step workflows. `orchestration/workflow.py` already follows the propose/resume shape.
+- Use pgvector columns and SQL similarity search on Postgres (`data/vectors.py`).
+- Add Redis pub/sub for security events when the API runs as several processes.

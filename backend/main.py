@@ -1,65 +1,51 @@
+"""FastAPI app: L5 gateway middleware + the API routers. See docs/architecture/ for the layer diagrams."""
+import asyncio
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from sqlmodel import Session, select
+from sqlmodel import Session
 
+from backend.api import approvals, auth, hr, inbox, recruiting, scheduling, security
 from backend.config import get_settings
-from backend.core.security import hash_password, limiter
-from backend.db import engine, init_db
-from backend.features.approvals.router import router as approvals_router
-from backend.features.auth.router import router as auth_router
-from backend.features.email_digest.router import router as email_router
-from backend.features.employee_qa.router import router as qa_router
-from backend.features.followups.router import router as followups_router
-from backend.features.replies.router import router as replies_router
-from backend.features.scheduling.router import router as scheduling_router
-from backend.features.screening.router import router as screening_router
-from backend.models import Tenant, User
+from backend.data.db import engine, init_db
+from backend.orchestration import seed
+from backend.security import events
+from backend.security.gateway import limiter
 
 settings = get_settings()
-
-
-def seed_demo_users() -> None:
-    with Session(engine) as session:
-        if session.exec(select(Tenant)).first():
-            return
-        acme = Tenant(name="acme")
-        session.add(acme)
-        session.commit()
-        for email, role, pw in [
-            ("admin@acme.test", "admin", settings.demo_admin_password),
-            ("recruiter@acme.test", "recruiter", settings.demo_recruiter_password),
-            ("viewer@acme.test", "viewer", settings.demo_viewer_password),
-        ]:
-            session.add(User(tenant_id=acme.id, email=email, role=role, hashed_password=hash_password(pw)))
-        session.commit()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    if settings.seed_users:
-        seed_demo_users()
+    if settings.seed_demo:
+        with Session(engine) as session:
+            seed.seed(session)
+    events.bind_loop(asyncio.get_running_loop())
     yield
 
 
-app = FastAPI(title=settings.app_name, lifespan=lifespan)
+app = FastAPI(title=settings.app_name, lifespan=lifespan,
+              description="The agent executes, the human decides: agents only propose; humans approve in /approvals.")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
     allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type", "X-API-Key"],
+    allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
 )
 
 
 @app.middleware("http")
-async def security_headers(request: Request, call_next):
+async def gateway_headers(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID", "")[:64] or f"req_{uuid.uuid4().hex[:12]}"
     response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -69,9 +55,8 @@ async def security_headers(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "llm_mode": settings.llm_mode}
+    return {"status": "ok", "llm_provider": settings.llm_provider, "llm_fallback": settings.llm_fallback_provider or None}
 
 
-for r in (auth_router, screening_router, email_router, replies_router, approvals_router,
-          followups_router, scheduling_router, qa_router):
+for r in (auth.router, recruiting.router, inbox.router, approvals.router, scheduling.router, hr.router, security.router):
     app.include_router(r)

@@ -1,0 +1,181 @@
+"""L5 Action Executor: the ONLY component that holds SMTP / calendar credentials and the ONLY
+code path that sends or records anything.
+
+Flow (docs/architecture/04-hitl-sequence.mmd):
+  human approves -> signed Approval(payload_hash) -> verify signature + role + status == pending
+  -> execute -> SentEmail / DB change -> hash-chained audit -> resume the workflow hook.
+"""
+import hashlib
+import hmac
+import json
+import secrets
+import smtplib
+import uuid
+from datetime import datetime, timedelta, timezone
+from email.message import EmailMessage as MimeMessage
+from email.utils import make_msgid
+
+from fastapi import HTTPException
+from sqlmodel import Session, select
+
+from backend.config import get_settings
+from backend.data.models import (Application, Approval, Candidate, PointsLedger, PointsRule, ProposedAction,
+                                 SchedulingToken, SentEmail, utcnow)
+from backend.security import audit
+from backend.security.gateway import Principal
+from backend.security.validator import check_outgoing_text
+
+# ------------------------------------------------------------------ signing
+def payload_hash(payload: str) -> str:
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _sig_material(a: Approval) -> bytes:
+    return "|".join([str(a.action_id), a.decision, str(a.reviewer_id), a.payload_hash,
+                     a.decided_at.replace(tzinfo=None).isoformat(timespec="seconds")]).encode()
+
+
+def sign(a: Approval) -> str:
+    return hmac.new(get_settings().approval_signing_secret.encode(), _sig_material(a), hashlib.sha256).hexdigest()
+
+
+def verify(a: Approval, action: ProposedAction) -> bool:
+    return (hmac.compare_digest(a.signature, sign(a))
+            and a.payload_hash == payload_hash(action.payload)
+            and a.action_id == action.id and a.tenant_id == action.tenant_id)
+
+
+# ------------------------------------------------------------------ decisions
+def _decide(session: Session, action: ProposedAction, reviewer: Principal, decision: str, note: str) -> Approval:
+    if not reviewer.is_human or reviewer.user_id is None:
+        raise HTTPException(403, "Only a human reviewer can decide")
+    if action.status != "pending":
+        raise HTTPException(409, f"ALREADY_DECIDED: action is {action.status}")
+    approval = Approval(tenant_id=action.tenant_id, action_id=action.id, reviewer_id=reviewer.user_id,
+                        reviewer_email=reviewer.subject, decision=decision, note=note[:1000],
+                        payload_hash=payload_hash(action.payload), decided_at=utcnow().replace(microsecond=0),
+                        signature="")
+    approval.signature = sign(approval)
+    session.add(approval)
+    return approval
+
+
+def approve(session: Session, action: ProposedAction, reviewer: Principal, *, note: str = "",
+            edits: dict | None = None, acknowledge_risk: bool = False) -> ProposedAction:
+    if action.status != "pending":
+        raise HTTPException(409, f"ALREADY_DECIDED: action is {action.status}")
+    if action.risk_level == "high" and not acknowledge_risk:
+        raise HTTPException(400, "HIGH_RISK: review the flags and set acknowledge_risk=true")
+    if action.type == "broadcast" and action.requested_by == reviewer.subject:
+        raise HTTPException(403, "FOUR_EYES: the requester cannot approve their own broadcast")
+    if edits:
+        payload = json.loads(action.payload)
+        for k in ("subject", "body", "selected_slots"):  # the recipient can never be edited
+            if edits.get(k) is not None:
+                payload[k] = edits[k]
+        action.payload = json.dumps(payload)
+        audit.log(session, actor=reviewer.subject, event="action.edited_by_human", tenant_id=action.tenant_id,
+                  target=f"action:{action.id}", commit=False)
+    approval = _decide(session, action, reviewer, "approve", note)
+    session.commit()
+    _execute(session, action, approval)
+    audit.log(session, actor=reviewer.subject, event="action.approved", tenant_id=action.tenant_id,
+              target=f"action:{action.id}", detail={"approval": str(approval.id), "result": action.result})
+    session.refresh(action)
+    return action
+
+
+def reject(session: Session, action: ProposedAction, reviewer: Principal, note: str = "") -> ProposedAction:
+    _decide(session, action, reviewer, "reject", note)
+    action.status = "rejected"
+    session.add(action)
+    session.commit()
+    audit.log(session, actor=reviewer.subject, event="action.rejected", tenant_id=action.tenant_id,
+              target=f"action:{action.id}", detail={"note": note[:200]})
+    _resume(session, action)
+    session.refresh(action)
+    return action
+
+
+# ------------------------------------------------------------------ execution
+def _send_email(session: Session, action: ProposedAction, to: str, subject: str, body: str) -> str:
+    s = get_settings()
+    message_id = make_msgid(domain=s.smtp_from.split("@")[-1])
+    transport = "outbox"
+    if s.smtp_host:
+        msg = MimeMessage()
+        msg["From"], msg["To"], msg["Subject"], msg["Message-ID"] = s.smtp_from, to, subject, message_id
+        msg.set_content(body)
+        with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10) as smtp:
+            smtp.send_message(msg)
+        transport = "smtp"
+    session.add(SentEmail(tenant_id=action.tenant_id, action_id=action.id, to=to, subject=subject, body=body,
+                          transport=transport, message_id=message_id))
+    return f"email to {to} via {transport} ({message_id})"
+
+
+def _execute(session: Session, action: ProposedAction, approval: Approval) -> None:
+    if not verify(approval, action):  # payload changed after approval, or forged approval
+        action.status, action.result = "failed", "approval signature verification failed"
+        session.add(action)
+        session.commit()
+        audit.log(session, actor="executor", event="action.signature_failed", tenant_id=action.tenant_id,
+                  target=f"action:{action.id}")
+        return
+    p = json.loads(action.payload)
+    try:
+        if action.type in ("send_email", "send_reminder", "broadcast"):
+            action.result = _send_email(session, action, p["to"], p["subject"], p["body"])
+        elif action.type == "record_decision":
+            app = session.get(Application, uuid.UUID(p["application_id"]))
+            cand = session.get(Candidate, app.candidate_id) if app else None
+            if not app or app.tenant_id != action.tenant_id:
+                raise ValueError("application not found")
+            app.status, cand.stage = p["decision"], p["decision"]
+            session.add(app)
+            session.add(cand)
+            action.result = f"application {app.id} -> {p['decision']}"
+        elif action.type == "schedule_interview":
+            slots = p.get("selected_slots") or p["slots"]
+            token = SchedulingToken(jti=secrets.token_urlsafe(32), tenant_id=action.tenant_id,
+                                    candidate_id=uuid.UUID(p["candidate_id"]), action_id=action.id,
+                                    interviewer=p["interviewer"], slots=json.dumps(slots),
+                                    expires_at=utcnow() + timedelta(hours=get_settings().scheduling_token_hours))
+            session.add(token)
+            link = f"{get_settings().public_base_url}/public/schedule/{token.jti}"
+            action.result = _send_email(session, action, p["to"], p["subject"], p["body"].replace("{link}", link))
+        elif action.type == "award_points":
+            rule = session.get(PointsRule, p["action_type"])
+            if not rule:
+                raise ValueError("unknown points rule")
+            if session.exec(select(PointsLedger).where(PointsLedger.idempotency_key == p["idempotency_key"])).first():
+                raise ValueError("duplicate award (idempotency key already used)")
+            session.add(PointsLedger(tenant_id=action.tenant_id, employee_id=p["employee_id"], action_type=rule.action_type,
+                                     points=rule.points, period=utcnow().strftime("%Y-%m"), awarded_by=approval.reviewer_email,
+                                     note=p.get("note", ""), idempotency_key=p["idempotency_key"]))
+            action.result = f"{rule.points} points to {p['employee_id']}"
+        else:
+            raise ValueError(f"unknown action type {action.type}")
+        action.status = "executed"
+    except Exception as e:
+        session.rollback()
+        action = session.get(ProposedAction, action.id)
+        action.status, action.result = "failed", f"{type(e).__name__}: {e}"[:500]
+    action.executed_at = utcnow()
+    session.add(action)
+    session.commit()
+    if action.status == "executed":
+        _resume(session, action)
+
+
+def _resume(session: Session, action: ProposedAction) -> None:
+    from backend.orchestration import workflow  # lazy: orchestration depends on security, not the reverse
+
+    workflow.resume(session, action)
+
+
+def recheck_payload(payload: dict) -> list:
+    """Used when an action is proposed: validates any outgoing text in the payload."""
+    text = f"{payload.get('subject', '')}\n{payload.get('body', '')}"
+    return check_outgoing_text(text, source_text=payload.get("_source_text", ""),
+                               fact_check=payload.get("_fact_check", False))
