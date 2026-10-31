@@ -1,0 +1,7 @@
+{
+  "title": "Frontend Developer",
+  "description": "Build the candidate portal and internal dashboards.",
+  "required_skills": ["javascript", "react", "typescript"],
+  "nice_to_have": ["figma", "git", "communication"],
+  "min_years": 2
+}

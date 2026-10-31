@@ -8,10 +8,11 @@ TASK = ("Classify this email received by the HR inbox. urgency=high only for tim
 KEYWORDS = [
     ("spam_phishing", ["verify your password", "click here", "lottery", "bank details", "account will be suspended"]),
     ("interview_scheduling", ["interview", "reschedule", "availability", "slot"]),
+    ("candidate_question", ["salary range", "status of my", "any news", "remote candidates", "team i would join"]),
     ("application", ["application", "resume", "cv", "apply", "position"]),
-    ("policy_question", ["policy", "leave", "remote", "expense", "benefit"]),
-    ("employee_request", ["payslip", "certificate", "vacation", "day off"]),
-    ("candidate_question", ["salary", "status of my", "any news"]),
+    ("employee_request", ["payslip", "employment certificate", "vacation", "day off", "send it"]),
+    ("policy_question", ["policy", "leave", "remote", "expense", "benefit", "training", "overtime", "insurance",
+                         "sick", "carry over", "receipts", "medical certificate"]),
 ]
 
 

@@ -57,5 +57,6 @@ def employee(client):
 def demo(client, admin):
     r = client.post("/admin/demo/load", headers=admin)
     assert r.status_code == 200, r.text
-    jobs = client.get("/jobs", headers=admin).json()
-    return {"load": r.json(), "job_id": jobs[0]["id"]}
+    job = next(j for j in client.get("/jobs", headers=admin).json() if j["title"] == "Backend Engineer")
+    assert client.post(f"/jobs/{job['id']}/screen", headers=admin).status_code == 200
+    return {"load": r.json(), "job_id": job["id"]}

@@ -1,8 +1,0 @@
-Katherine Salas
-taylor75@example.com | (204)471-1671
-Junior Developer with 9 years of experience.
-Skills: Docker, Pandas, Java
-Education: Engineering degree (ENSI)
-
-Experience
-- Shepherd LLC: Evolve interactive initiatives using Java.

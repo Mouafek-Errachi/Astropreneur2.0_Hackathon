@@ -1,9 +1,0 @@
-Evelyn Garcia
-dgarcia@example.com | 8263217459
-Full-Stack Developer with 5 years of experience.
-Skills: Excel, JavaScript, Java
-Education: MSc Computer Science
-
-Experience
-- Phelps-Villarreal: Synergize turn-key functionalities using Java.
-- Clay, Freeman and Weaver: Re-intermediate innovative action-items using JavaScript.

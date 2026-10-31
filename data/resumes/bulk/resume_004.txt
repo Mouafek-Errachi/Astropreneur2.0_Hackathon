@@ -1,9 +1,0 @@
-Christopher Smith
-teresa28@example.com | 248-793-2528
-DevOps Engineer with 8 years of experience.
-Skills: Machine Learning, Docker, Git
-Education: MBA
-
-Experience
-- Smith-Hickman: Matrix extensible action-items using Git.
-- Allen PLC: Evolve strategic models using Machine Learning.

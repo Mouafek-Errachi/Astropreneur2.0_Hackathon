@@ -1,0 +1,7 @@
+{
+  "title": "Data Engineer",
+  "description": "Design and run data pipelines and the analytics warehouse.",
+  "required_skills": ["python", "sql", "pandas"],
+  "nice_to_have": ["aws", "docker", "machine learning"],
+  "min_years": 2
+}

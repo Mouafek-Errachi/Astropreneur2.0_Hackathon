@@ -1,0 +1,14 @@
+Matthieu Mercier
+matthieumercie89@example.com | 04 63 49 05 81 | SauvageVille
+Data Analyst with 5 years of experience.
+
+Summary
+Multi-layered executive archive. Looking for a role where I can grow and deliver impact.
+
+Skills: Aws, Python, Git, Docker, Machine Learning, Pandas, Sql
+Languages: German, English, Italian
+Education: Master in Human Resources
+
+Experience
+- Wheeler, Cruz and Carpenter (2022-2026): Grow dynamic vortals using Aws.
+- Bonnet Lebreton SA (2021-2022): Unleash strategic mindshare using Docker.

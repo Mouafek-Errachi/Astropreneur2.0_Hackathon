@@ -1,8 +1,0 @@
-Tammie Bright
-hamiltoncorey@example.com | +1-417-524-0050x4556
-Data Engineer with 11 years of experience.
-Skills: React, Kubernetes, Machine Learning, Azure
-Education: BSc Mathematics
-
-Experience
-- Jenkins, Maldonado and White: Reinvent strategic e-business using Kubernetes.

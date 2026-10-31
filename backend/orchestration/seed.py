@@ -86,29 +86,43 @@ def index_policies(session: Session, tenant_id: int) -> int:
 
 
 def load_demo(session: Session, tenant_id: int, actor: str, bulk: bool = False) -> dict:
+    """Creates every job in data/jobs. The hand-written + attack resumes go to the first job; with bulk=True each
+    data/resumes/bulk/<job file stem>/ folder goes to its own job (run scripts/generate_demo_data.py first)."""
     data = get_settings().data_dir
     out = {"jobs": 0, "resumes": [], "emails": 0}
+    jobs: dict[str, JobOffer] = {}
     for path in sorted((data / "jobs").glob("*.json")):
         spec = json.loads(path.read_text(encoding="utf-8"))
         job = session.exec(select(JobOffer).where(JobOffer.tenant_id == tenant_id, JobOffer.title == spec["title"])).first()
         if not job:
             criteria = {k: spec.get(k, d) for k, d in (("required_skills", []), ("nice_to_have", []), ("min_years", 0))}
             job = JobOffer(tenant_id=tenant_id, title=spec["title"], description=spec.get("description", ""),
-                           criteria=json.dumps(criteria), embedding=vectors.dumps(vectors.embed(spec.get("description", ""))))
+                           criteria=json.dumps(criteria),
+                           embedding=vectors.dumps(vectors.embed(f"{spec['title']} {spec.get('description', '')}")))
             session.add(job)
             session.commit()
             out["jobs"] += 1
-        files = sorted(f for f in (data / "resumes").iterdir() if f.is_file())
-        if bulk and (data / "resumes" / "bulk").exists():
-            files += sorted((data / "resumes" / "bulk").iterdir())
+        jobs[path.stem] = job
+    if not jobs:
+        return out
+
+    batches = [(next(iter(jobs.values())), sorted(f for f in (data / "resumes").iterdir() if f.is_file()))]
+    if bulk:
+        for slug, job in jobs.items():
+            folder = data / "resumes" / "bulk" / slug
+            if folder.is_dir():
+                batches.append((job, sorted(folder.iterdir())))
+    for job, files in batches:
         for f in files:
             if f.is_file():
-                out["resumes"].append(ingestion.ingest_resume(session, tenant_id, job, f.name, f.read_bytes()))
-        break  # resumes go to the first job
+                out["resumes"].append({**ingestion.ingest_resume(session, tenant_id, job, f.name, f.read_bytes()),
+                                       "job": job.title})
+
     emails_file = data / "emails" / "sample_emails.json"
     if emails_file.exists():
         for i, m in enumerate(json.loads(emails_file.read_text(encoding="utf-8"))):
+            received = datetime.fromisoformat(m["received_at"]) if m.get("received_at") else None
             ingestion.ingest_email(session, tenant_id, sender=m["sender"], subject=m.get("subject", ""), body=m["body"],
-                                   external_id=m.get("external_id", f"demo-{i}"), actor=actor)
+                                   external_id=m.get("external_id", f"demo-{i}"), received_at=received, actor=actor)
             out["emails"] += 1
     return out

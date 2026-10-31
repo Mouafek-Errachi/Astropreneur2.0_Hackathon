@@ -1,9 +1,0 @@
-Jackson Ball
-wbishop@example.com | 001-873-883-4735x9774
-Data Analyst with 7 years of experience.
-Skills: Machine Learning, Java, Communication
-Education: BSc Software Engineering
-
-Experience
-- Montoya PLC: Enable dot-com markets using Machine Learning.
-- Castillo, Watson and Villa: Unleash 24/7 technologies using Communication.

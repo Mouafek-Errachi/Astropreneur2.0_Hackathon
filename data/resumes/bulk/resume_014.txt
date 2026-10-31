@@ -1,9 +1,0 @@
-Ryan Cortez
-william65@example.com | (248)623-6629x9468
-Full-Stack Developer with 2 years of experience.
-Skills: Communication, Kubernetes, AWS, Git, Linux, JavaScript, FastAPI, Pandas
-Education: Engineering degree (ENSI)
-
-Experience
-- Clark-Floyd: Expedite world-class bandwidth using JavaScript.
-- Ramos-Lewis: Syndicate frictionless web services using Pandas.

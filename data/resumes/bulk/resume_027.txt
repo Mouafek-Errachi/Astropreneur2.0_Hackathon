@@ -1,9 +1,0 @@
-Katherine Miller
-prestonjessica@example.com | +1-940-913-9904x902
-Software Developer with 2 years of experience.
-Skills: Linux, Python, Java, Pandas, Git, AWS
-Education: BSc Software Engineering
-
-Experience
-- White-Richards: Whiteboard holistic infrastructures using Linux.
-- Bailey-Cook: Repurpose sticky communities using Linux.

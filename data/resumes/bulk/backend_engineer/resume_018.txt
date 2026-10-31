@@ -1,0 +1,13 @@
+Robert Avery
+robertavery53@example.com | 818.969.9938 | Pruvost
+Software Engineer with 10 years of experience.
+
+Summary
+L'avantage de rouler sans soucis. Looking for a role where I can grow and deliver impact.
+
+Skills: Project Management, Sql, Kubernetes, Aws, Python, Docker, Fastapi
+Languages: German, English, Italian
+Education: BSc Software Engineering
+
+Experience
+- Garrett LLC (2022-2026): Leverage web-enabled roi using Docker.

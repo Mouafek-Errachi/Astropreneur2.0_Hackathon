@@ -39,8 +39,8 @@ c3.metric("Waiting for approval", len(pending or []))
 
 if "admin" in me["scopes"]:
     st.subheader("Demo data")
-    bulk = st.checkbox("Include 60 bulk resumes (run scripts/generate_demo_data.py first)")
-    if st.button("Load demo data (job, resumes incl. attacks, emails)"):
+    bulk = st.checkbox("Include 100 bulk resumes across the 5 jobs")
+    if st.button("Load demo data (5 jobs, resumes incl. 10 attacks, 43 emails)"):
         r = call("POST", "/admin/demo/load", params={"bulk": str(bulk).lower()})
         if r:
             ok = sum(x["accepted"] for x in r["resumes"])

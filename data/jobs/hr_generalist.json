@@ -1,0 +1,7 @@
+{
+  "title": "HR Generalist",
+  "description": "Support recruiting, onboarding and employee relations.",
+  "required_skills": ["recruiting", "communication", "excel"],
+  "nice_to_have": ["project management", "leadership"],
+  "min_years": 2
+}

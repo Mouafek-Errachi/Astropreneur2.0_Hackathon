@@ -1,0 +1,7 @@
+{
+  "title": "DevOps Engineer",
+  "description": "Own CI/CD, cloud infrastructure and observability.",
+  "required_skills": ["docker", "kubernetes", "linux"],
+  "nice_to_have": ["aws", "azure", "python"],
+  "min_years": 3
+}

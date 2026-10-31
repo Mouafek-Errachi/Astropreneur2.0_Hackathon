@@ -1,8 +1,0 @@
-Andrew Stevens
-dudleynicholas@example.com | +1-649-359-3103
-Backend Engineer with 1 years of experience.
-Skills: Pandas, SQL, Python, Communication, FastAPI, Machine Learning, Git
-Education: MBA
-
-Experience
-- Delacruz Group: Empower ubiquitous functionalities using Machine Learning.

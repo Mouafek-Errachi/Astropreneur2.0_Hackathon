@@ -1,0 +1,13 @@
+Bob Cole
+bobcole24@example.com | +33 (0)3 51 04 69 90 | Port Kathleen
+DevOps Engineer with 3 years of experience.
+
+Summary
+Polarized demand-driven groupware. Looking for a role where I can grow and deliver impact.
+
+Skills: Leadership, Kubernetes, Aws, Docker, Java, Figma
+Languages: English, Italian, French
+Education: MSc Computer Science
+
+Experience
+- Lecomte S.A. (2024-2026): Extend compelling action-items using Java.

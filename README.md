@@ -20,7 +20,7 @@ cp .env.example .env
 
 `run.py` starts the API and the dashboard together and opens http://localhost:8501. Ctrl+C stops both. On Windows you can also double-click `run.bat`.
 
-1. Log in as `admin@acme.test` (passwords are in `.env.example`) and click **Load demo data**. This loads a job, resumes including 6 attack files, and emails.
+1. Log in as `admin@acme.test` (passwords are in `.env.example`) and click **Load demo data**. Tick "bulk" for the full set: 5 jobs, 100 generated resumes plus 13 hand-written and attack files, and 43 inbox emails.
 2. Log in as `recruiter@acme.test`, go to **Screening**, and click **Run screening**.
 3. Queue a decision or an email, then approve it in **Approvals**.
 4. Watch **AI Firewall**: it shows the attacks the guard caught.
@@ -34,11 +34,21 @@ API docs: http://127.0.0.1:8000/docs
 | `viewer@acme.test` | Read only |
 | `yasmine.b@hr-demo.test` | Employee: asks HR, opens tickets |
 
-To generate 60 more realistic resumes (PDF, DOCX and TXT), run the command below, then tick "bulk" when loading the demo data:
+The demo data in `data/` is already generated. To regenerate it (for example with more resumes), run the command below; `--per-job 30` makes 150 resumes:
 
 ```bash
 .venv/Scripts/python scripts/generate_demo_data.py
 ```
+
+| Data | What's in it |
+|---|---|
+| `data/jobs/` | 5 jobs: Backend Engineer, Data Engineer, Frontend Developer, DevOps Engineer, HR Generalist |
+| `data/resumes/bulk/<job>/` | 20 resumes per job (PDF, DOCX, TXT): a mix of strong, borderline, weak and off-profile candidates |
+| `data/resumes/` | 3 hand-written resumes and 10 attack files: white text, 1pt font, hidden and white Word runs, base64-encoded instructions, chat-template tokens, zero-width characters, data exfiltration, a fake PDF, and HTML with a hidden span |
+| `data/emails/sample_emails.json` | 43 emails over the last 7 days: applications, candidate questions, interview requests, employee questions, phishing, injection attempts, newsletters |
+| `data/policies/` | Expenses, training, onboarding, overtime and travel. Leave, payroll, remote work, benefits and conduct come from `n8n/data`. |
+| `data/calendar.json` | Busy blocks for 4 interviewers over the next 2 weeks |
+| `n8n/data/` | 12 employees, 4 teams, points rules and ledger, policy sections |
 
 ## Architecture
 

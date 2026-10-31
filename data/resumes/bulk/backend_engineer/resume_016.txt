@@ -1,0 +1,13 @@
+Joseph Le Leblanc
+josephleleblan26@example.com | 0142831367 | Brewerfort
+Backend Engineer with 9 years of experience.
+
+Summary
+Le droit de louer autrement. Looking for a role where I can grow and deliver impact.
+
+Skills: Docker, Excel, Leadership, Kubernetes, Python, Sql
+Languages: English, Italian, Arabic
+Education: BSc Software Engineering
+
+Experience
+- Boutin (2024-2026): Empower extensible portals using Kubernetes.

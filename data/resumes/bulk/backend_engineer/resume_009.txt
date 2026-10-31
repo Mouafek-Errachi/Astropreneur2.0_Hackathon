@@ -1,0 +1,15 @@
+Justin Baxter
+justinbaxter60@example.com | 622.460.2563 | Brennanfort
+Python Developer with 4 years of experience.
+
+Summary
+Exclusive logistical hardware. Looking for a role where I can grow and deliver impact.
+
+Skills: Linux, Fastapi, Python, Leadership, Docker
+Languages: Arabic, Italian
+Education: BSc Mathematics
+
+Experience
+- Hubert Laurent et Fils (2023-2026): Strategize open-source niches using Linux.
+- Bell-Hicks (2021-2023): Utilize one-to-one portals using Fastapi.
+- Estes, Baker and Rodriguez (2019-2021): Seize turn-key e-commerce using Docker.

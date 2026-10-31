@@ -1,0 +1,14 @@
+Kenneth Scott
+kennethscott97@example.com | +33 (0)3 54 56 15 95 | Williamchester
+Backend Engineer with 2 years of experience.
+
+Summary
+La liberté d'atteindre vos buts à l'état pur. Looking for a role where I can grow and deliver impact.
+
+Skills: Python, Aws, Java, Sql
+Languages: French, German
+Education: BSc Mathematics
+
+Experience
+- Carroll, Sullivan and Bass (2024-2026): Envisioneer best-of-breed e-commerce using Sql.
+- Pichon (2023-2024): Innovate killer mindshare using Aws.

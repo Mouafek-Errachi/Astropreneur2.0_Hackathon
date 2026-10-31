@@ -1,0 +1,15 @@
+Vincent Clément
+vincentclment41@example.com | 0235343320 | South Cheryl
+Software Engineer with 8 years of experience.
+
+Summary
+Persevering intangible product. Looking for a role where I can grow and deliver impact.
+
+Skills: Aws, Kubernetes, Python, C++, Docker, Java, Sql
+Languages: Arabic, German
+Education: Master in Human Resources
+
+Experience
+- Horton, Snyder and Sanchez (2024-2026): Productize sticky e-commerce using Aws.
+- Brock Ltd (2023-2024): Streamline interactive initiatives using Sql.
+- Barthelemy Martineau S.A.S. (2021-2023): Engineer visionary e-business using Aws.

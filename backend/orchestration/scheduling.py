@@ -21,7 +21,8 @@ def interviewers() -> dict:
 
 
 def busy(session: Session, tenant_id: int, interviewer: str) -> list[tuple[datetime, datetime]]:
-    blocks = [(datetime.fromisoformat(b["start"]), datetime.fromisoformat(b["end"]))
+    # Calendar times are office wall-clock times: drop any offset so they compare with the slot grid.
+    blocks = [(datetime.fromisoformat(b["start"]).replace(tzinfo=None), datetime.fromisoformat(b["end"]).replace(tzinfo=None))
               for b in interviewers().get(interviewer, [])]
     for ev in session.exec(select(CalendarEvent).where(CalendarEvent.tenant_id == tenant_id,
                                                        CalendarEvent.interviewer == interviewer)):

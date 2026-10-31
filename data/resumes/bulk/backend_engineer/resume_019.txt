@@ -1,0 +1,15 @@
+Jason Norris
+jasonnorris87@example.com | 0158344713 | Peltier-sur-Philippe
+Python Developer with 1 years of experience.
+
+Summary
+La possibilité de changer à l'état pur. Looking for a role where I can grow and deliver impact.
+
+Skills: Docker, Leadership, Sql, Kubernetes, Excel
+Languages: Italian, German
+Education: Engineering degree (INSAT)
+
+Experience
+- Serrano-Jones (2024-2026): Generate extensible metrics using Docker.
+- Denis (2021-2024): Scale seamless interfaces using Excel.
+- Navarro (2018-2021): Expedite revolutionary e-commerce using Docker.

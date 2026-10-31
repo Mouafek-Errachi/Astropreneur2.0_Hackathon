@@ -62,5 +62,5 @@ def audit_verify(p: Principal = Depends(require("audit:read")), session: Session
 
 @router.post("/admin/demo/load")
 def load_demo(bulk: bool = False, p: Principal = Depends(require("admin", human_only=True)), session: Session = Depends(get_session)):
-    """Loads the sample job, resumes (incl. adversarial ones; bulk=true adds 60 more) and emails from data/."""
+    """Loads the 5 sample jobs, the hand-written + attack resumes, the inbox emails; bulk=true adds 100 generated resumes."""
     return seed.load_demo(session, p.tenant_id, p.subject, bulk)

@@ -1,0 +1,15 @@
+Alice de Morel
+alicedemorel60@example.com | 001-457-887-2982x595 | Marques-sur-Guillou
+DevOps Engineer with 3 years of experience.
+
+Summary
+Le droit de rouler avant-tout. Looking for a role where I can grow and deliver impact.
+
+Skills: Docker, Python, Linux, Excel
+Languages: French, Italian
+Education: Engineering degree (INSAT)
+
+Experience
+- Delattre S.A.S. (2022-2026): Generate proactive metrics using Linux.
+- Bègue (2021-2022): Drive scalable applications using Excel.
+- Hardy Lombard et Fils (2020-2021): Orchestrate interactive paradigms using Linux.

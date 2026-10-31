@@ -1,0 +1,13 @@
+Ray Walsh
+raywalsh9@example.com | +33 5 94 86 80 11 | Port Mikeside
+Backend Engineer with 5 years of experience.
+
+Summary
+Optional clear-thinking analyzer. Looking for a role where I can grow and deliver impact.
+
+Skills: Leadership, Docker, Fastapi, Python, Sql, Git
+Languages: English, Arabic
+Education: Master in Human Resources
+
+Experience
+- Fournier (2023-2026): Architect interactive web services using Git.
