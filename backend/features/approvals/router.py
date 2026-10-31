@@ -31,12 +31,12 @@ def list_actions(status: Optional[str] = None, p: Principal = Depends(require("a
 def approve(action_id: int, body: ApproveRequest, p: Principal = Depends(require("approvals:decide", human_only=True)),
             session: Session = Depends(get_session)):
     a = get_owned(session, Action, action_id, p)
-    if a.status == "pending" and (body.edited_subject or body.edited_body):
-        payload = json.loads(a.payload)
+    payload = json.loads(a.payload)
+    if a.status == "pending" and "body" in payload and (body.edited_subject or body.edited_body):
         payload["subject"] = body.edited_subject or payload.get("subject")
         payload["body"] = body.edited_body or payload.get("body")
         a.payload = json.dumps(payload)
-    return action_out(approvals.approve(session, a, p, body.note, body.acknowledge_risk))
+    return action_out(approvals.approve(session, a, p, body.note, body.acknowledge_risk, body.selected_slot))
 
 
 @router.post("/{action_id}/reject", response_model=ActionOut)

@@ -1,1 +1,1 @@
-approval_id,type,status,target_ref,payload,checks,created_by,decided_by,edited_by_human,reason,decided_at
+approval_id,type,status,target_ref,payload,checks,created_by,decided_by,edited_by_human,reason,decided_at,lock_token

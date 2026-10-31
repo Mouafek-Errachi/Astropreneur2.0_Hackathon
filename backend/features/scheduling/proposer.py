@@ -1,15 +1,12 @@
-from datetime import datetime, timedelta
-
-from backend.features.scheduling.calendar import busy_slots
+from datetime import datetime, timedelta, timezone
 
 WORK_START, WORK_END = 9, 17
 
 
-def propose_slots(interviewer: str, duration_min: int, days_ahead: int, count: int = 3,
+def propose_slots(busy: list[tuple[datetime, datetime]], duration_min: int, days_ahead: int, count: int = 3,
                   now: datetime | None = None) -> list[dict]:
-    """Free weekday slots in working hours, on the hour, that don't overlap busy blocks."""
-    now = now or datetime.now()
-    busy = busy_slots(interviewer)
+    """Free weekday slots in working hours (UTC), on the hour, that don't overlap busy blocks."""
+    now = now or datetime.now(timezone.utc)
     dur = timedelta(minutes=duration_min)
     slots = []
     day = (now + timedelta(days=1)).replace(hour=WORK_START, minute=0, second=0, microsecond=0)

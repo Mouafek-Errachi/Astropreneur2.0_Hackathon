@@ -12,6 +12,11 @@ services:
     command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
     environment:
       API_URL: http://backend:8000
+      N8N_BASE_URL: ${N8N_BASE_URL:-}
+      N8N_HR_KEY: ${N8N_HR_KEY:-}
+      N8N_HR_ADMIN_KEY: ${N8N_HR_ADMIN_KEY:-}
+      N8N_PORTAL_KEY: ${N8N_PORTAL_KEY:-}
+      N8N_EXTENSION_KEY: ${N8N_EXTENSION_KEY:-}
     ports: ["8501:8501"]
     depends_on: [backend]
 volumes:

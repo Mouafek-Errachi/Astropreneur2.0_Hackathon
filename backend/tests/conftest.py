@@ -36,3 +36,8 @@ def recruiter(client):
 @pytest.fixture(scope="session")
 def viewer(client):
     return _login(client, "viewer@acme.test", "Viewer#2026!")
+
+
+@pytest.fixture(scope="session")
+def admin(client):
+    return _login(client, "admin@acme.test", "Admin#2026!")

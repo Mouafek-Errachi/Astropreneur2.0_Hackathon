@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Secure AI HR System (n8n)",
-    "description": "Live n8n endpoints for the hackathon. Fictional data only. Each request is a happy path or a security test; the expected result is in its description.",
+    "description": "Live n8n endpoints for the hackathon. Fictional data only. Each request is a happy path or a security test; the expected result is in its description. API keys and employee tokens are sent in clear by the client and stored as SHA-256 hashes in n8n. Who acts (reviewer, author, awarder) comes from the key, never from the body.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -127,7 +127,7 @@
             "url": "{{base_url}}/api/hr/points/award",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"employee_id\": \"emp_003\",\n  \"action_type\": \"peer_review\",\n  \"awarded_by\": \"hr_amira\",\n  \"note\": \"Reviewed the Media brand guide\",\n  \"source\": \"hr_dashboard\",\n  \"idempotency_key\": \"award_emp003_pr_demo_01\"\n}"
+              "raw": "{\n  \"employee_id\": \"emp_003\",\n  \"action_type\": \"peer_review\",\n  \"note\": \"Reviewed the Media brand guide\",\n  \"source\": \"hr_dashboard\",\n  \"idempotency_key\": \"award_emp003_pr_demo_01\"\n}"
             }
           }
         },
@@ -148,7 +148,28 @@
             "url": "{{base_url}}/api/hr/points/award",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"employee_id\": \"emp_003\",\n  \"action_type\": \"peer_review\",\n  \"awarded_by\": \"hr_amira\",\n  \"points\": 9999,\n  \"idempotency_key\": \"award_emp003_cheat_01\"\n}"
+              "raw": "{\n  \"employee_id\": \"emp_003\",\n  \"action_type\": \"peer_review\",\n  \"points\": 9999,\n  \"idempotency_key\": \"award_emp003_cheat_01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "ATTACK: award points in someone else's name (expect 403 IDENTITY_MISMATCH)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{hr_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/hr/points/award",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"emp_003\",\n  \"action_type\": \"peer_review\",\n  \"awarded_by\": \"hr_youssef\",\n  \"idempotency_key\": \"award_emp003_spoof_01\"\n}"
             }
           }
         },
@@ -287,9 +308,21 @@
             "url": "{{base_url}}/api/hr/broadcast",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"target_team\": \"engineering\",\n  \"requested_by\": \"hr_amira\",\n  \"message_prompt\": \"- office closed fri 7 nov for electrical maintenance\\n- everyone works remote that day\\n- update VPN client before thu 6 nov\\n- questions -> it-help channel\"\n}"
+              "raw": "{\n  \"target_team\": \"engineering\",\n  \"message_prompt\": \"- office closed fri 7 nov for electrical maintenance\\n- everyone works remote that day\\n- update VPN client before thu 6 nov\\n- questions -> it-help channel\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.response.json().data && pm.response.json().data.approval_id;",
+                  "if (id) pm.collectionVariables.set('approval_id', id);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Draft missing a date (expect [DATE] placeholder in missing_info)",
@@ -308,9 +341,54 @@
             "url": "{{base_url}}/api/hr/broadcast",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"target_team\": \"sales\",\n  \"requested_by\": \"hr_amira\",\n  \"message_prompt\": \"team lunch to celebrate Q3 results, at the usual restaurant, rsvp to hr\"\n}"
+              "raw": "{\n  \"target_team\": \"sales\",\n  \"message_prompt\": \"team lunch to celebrate Q3 results, at the usual restaurant, rsvp to hr\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.response.json().data && pm.response.json().data.approval_id;",
+                  "if (id) pm.collectionVariables.set('approval_id', id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Draft by the admin (sets approval_id for the four-eyes test)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{hr_admin_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/hr/broadcast",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"target_team\": \"operations\",\n  \"message_prompt\": \"- fire drill on wed 12 nov at 10:00\\n- meet at the car park\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const id = pm.response.json().data && pm.response.json().data.approval_id;",
+                  "if (id) pm.collectionVariables.set('approval_id', id);"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -363,7 +441,7 @@
             "url": "{{base_url}}/api/hr/approvals/decision",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"approval_id\": \"{{approval_id}}\",\n  \"decision\": \"approve\",\n  \"reviewer_id\": \"hr_youssef\",\n  \"edited_content\": { \"subject\": \"Re: your HR request (reviewed by HR)\" }\n}"
+              "raw": "{\n  \"approval_id\": \"{{approval_id}}\",\n  \"decision\": \"approve\",\n  \"edited_content\": {\n    \"subject\": \"Re: your HR request (reviewed by HR)\"\n  }\n}"
             }
           }
         },
@@ -384,7 +462,7 @@
             "url": "{{base_url}}/api/hr/approvals/decision",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"approval_id\": \"{{approval_id}}\",\n  \"decision\": \"reject\",\n  \"reviewer_id\": \"hr_youssef\",\n  \"reason\": \"Tone too formal, I will answer personally.\"\n}"
+              "raw": "{\n  \"approval_id\": \"{{approval_id}}\",\n  \"decision\": \"reject\",\n  \"reason\": \"Tone too formal, I will answer personally.\"\n}"
             }
           }
         },
@@ -400,6 +478,48 @@
               {
                 "key": "X-API-Key",
                 "value": "{{hr_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/hr/approvals/decision",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approval_id\": \"{{approval_id}}\",\n  \"decision\": \"approve\"\n}"
+            }
+          }
+        },
+        {
+          "name": "ATTACK: admin approves the broadcast they drafted (expect 403 FOUR_EYES)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{hr_admin_key}}"
+              }
+            ],
+            "url": "{{base_url}}/api/hr/approvals/decision",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approval_id\": \"{{approval_id}}\",\n  \"decision\": \"approve\"\n}"
+            }
+          }
+        },
+        {
+          "name": "ATTACK: approve under another reviewer's name (expect 403 IDENTITY_MISMATCH)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-API-Key",
+                "value": "{{hr_admin_key}}"
               }
             ],
             "url": "{{base_url}}/api/hr/approvals/decision",

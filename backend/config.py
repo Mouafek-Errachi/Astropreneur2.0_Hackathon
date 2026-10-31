@@ -57,6 +57,14 @@ class Settings(BaseSettings):
     # Outbound email allow-list for links inside drafted replies
     allowed_link_domains: str = "acme.test,careers.acme.test"
 
+    # Human-in-the-loop rules
+    four_eyes_decisions: bool = True  # whoever proposes a decision about a candidate cannot approve it
+    reminder_after_days: int = 3  # candidate follow-up when we wrote and they have not answered
+    unanswered_email_hours: int = 48
+
+    # Admin-only endpoint that loads fictional demo data (turn off outside demos)
+    enable_demo_data: bool = True
+
     @property
     def storage_dir(self) -> Path:
         return self.var_dir / "storage"
@@ -69,10 +77,20 @@ class Settings(BaseSettings):
     def max_upload_bytes(self) -> int:
         return int(self.max_upload_mb * 1024 * 1024)
 
+    @property
+    def max_request_bytes(self) -> int:
+        return int(self.max_request_mb * 1024 * 1024)
+
+    @property
+    def weak_jwt_secret(self) -> bool:
+        return self.jwt_secret.startswith("change-me") or len(self.jwt_secret) < 32
+
 
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
+    if s.weak_jwt_secret and s.environment != "dev":
+        raise RuntimeError("JWT_SECRET is a default or shorter than 32 characters. Set a long random value.")
     s.var_dir.mkdir(parents=True, exist_ok=True)
     s.storage_dir.mkdir(parents=True, exist_ok=True)
     s.quarantine_dir.mkdir(parents=True, exist_ok=True)

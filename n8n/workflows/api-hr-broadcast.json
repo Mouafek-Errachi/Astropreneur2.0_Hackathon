@@ -42,9 +42,9 @@
         "filters": {
           "conditions": [
             {
-              "keyName": "api_key",
+              "keyName": "api_key_sha256",
               "condition": "eq",
-              "keyValue": "={{ $json.headers[\"x-api-key\"] || \"missing\" }}"
+              "keyValue": "={{ String($json.headers[\"x-api-key\"] || \"missing\").hash(\"sha256\") }}"
             }
           ]
         },
@@ -65,7 +65,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const req = $('Broadcast Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key || key.active !== true || !['hr', 'hr_admin'].includes(key.client)) return fail(401, 'UNAUTHORIZED', 'Missing or invalid API key for this endpoint');\nconst body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};\nconst errors = [];\nconst ALLOWED = ['target_team', 'message_prompt', 'requested_by'];\nfor (const k of Object.keys(body)) if (!ALLOWED.includes(k)) errors.push('unknown field: ' + k);\nif (!/^[a-z_]{2,40}$/.test(String(body.target_team || ''))) errors.push('target_team must be 2-40 lowercase letters or underscores');\nif (typeof body.message_prompt !== 'string' || body.message_prompt.trim().length < 10) errors.push('message_prompt must be at least 10 characters');\nelse if (body.message_prompt.length > 3000) errors.push('message_prompt exceeds 3000 characters');\nif (!/^[A-Za-z0-9_-]{1,64}$/.test(String(body.requested_by || ''))) errors.push('requested_by is required (letters, digits, _ or -)');\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, target_team: body.target_team, requested_by: body.requested_by, message_prompt: body.message_prompt } }];"
+        "jsCode": "const req = $('Broadcast Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key_sha256 || key.active !== true || !['hr', 'hr_admin'].includes(key.client)) return fail(401, 'UNAUTHORIZED', 'Missing or invalid API key for this endpoint');\nconst body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};\nconst errors = [];\nconst ALLOWED = ['target_team', 'message_prompt', 'requested_by'];\nfor (const k of Object.keys(body)) if (!ALLOWED.includes(k)) errors.push('unknown field: ' + k);\nif (!/^[a-z_]{2,40}$/.test(String(body.target_team || ''))) errors.push('target_team must be 2-40 lowercase letters or underscores');\nif (typeof body.message_prompt !== 'string' || body.message_prompt.trim().length < 10) errors.push('message_prompt must be at least 10 characters');\nelse if (body.message_prompt.length > 3000) errors.push('message_prompt exceeds 3000 characters');\nconst owner = String(key.owner_id || '');\nif (!/^[A-Za-z0-9_-]{1,64}$/.test(owner)) return fail(403, 'KEY_NOT_BOUND', 'This API key is not bound to a person');\nif (body.requested_by != null && body.requested_by !== owner) return fail(403, 'IDENTITY_MISMATCH', 'requested_by must match the owner of the API key');\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, target_team: body.target_team, requested_by: owner, message_prompt: body.message_prompt } }];"
       }
     },
     {

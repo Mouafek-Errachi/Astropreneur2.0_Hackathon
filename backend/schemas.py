@@ -1,8 +1,12 @@
 """API request/response schemas and the strict schemas every LLM output must validate against."""
+import re
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Syntax check only: EmailStr rejects reserved demo domains such as acme.test.
+EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+(\.[\w-]+)+$")
 
 
 class Strict(BaseModel):
@@ -150,14 +154,23 @@ class CandidateOut(BaseModel):
     injection_flags: list[dict]
     profile: dict
     score_breakdown: dict
+    justification: str = ""
 
 
 class EmailIn(Strict):
-    sender: EmailStr
+    sender: str = Field(max_length=254)
     subject: str = Field(default="", max_length=300)
     body: str = Field(max_length=50_000)
     external_id: str = Field(default="", max_length=200)
     received_at: Optional[datetime] = None
+
+    @field_validator("sender")
+    @classmethod
+    def _valid_sender(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not EMAIL_RE.match(v):
+            raise ValueError("not a valid email address")
+        return v
 
 
 class EmailOut(BaseModel):
@@ -219,6 +232,12 @@ class ScheduleRequest(Strict):
     interviewer: str = Field(min_length=1, max_length=120)
     duration_minutes: int = Field(default=45, ge=15, le=240)
     days_ahead: int = Field(default=7, ge=1, le=30)
+
+
+class DemoDataRequest(Strict):
+    resumes: int = Field(default=60, ge=0, le=500)
+    emails: int = Field(default=40, ge=0, le=500)
+    seed: int = 7
 
 
 class AskRequest(Strict):

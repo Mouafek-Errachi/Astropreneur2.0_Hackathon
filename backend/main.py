@@ -1,9 +1,12 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from sqlmodel import Session, select
 
 from backend.config import get_settings
@@ -11,6 +14,7 @@ from backend.core.security import hash_password, limiter
 from backend.db import engine, init_db
 from backend.features.approvals.router import router as approvals_router
 from backend.features.auth.router import router as auth_router
+from backend.features.demo.router import router as demo_router
 from backend.features.email_digest.router import router as email_router
 from backend.features.employee_qa.router import router as qa_router
 from backend.features.followups.router import router as followups_router
@@ -20,6 +24,8 @@ from backend.features.screening.router import router as screening_router
 from backend.models import Tenant, User
 
 settings = get_settings()
+if settings.weak_jwt_secret:
+    logging.getLogger(__name__).warning("JWT_SECRET is a default value: fine for a local demo, never for a deployment.")
 
 
 def seed_demo_users() -> None:
@@ -49,6 +55,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)  # applies DEFAULT_RATE_LIMIT to every route without its own limit
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
@@ -59,7 +66,11 @@ app.add_middleware(
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
-    response = await call_next(request)
+    length = request.headers.get("content-length")
+    if length and length.isdigit() and int(length) > settings.max_request_bytes:
+        response = JSONResponse({"detail": f"Request larger than {settings.max_request_mb} MB"}, status_code=413)
+    else:
+        response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -73,5 +84,5 @@ def health():
 
 
 for r in (auth_router, screening_router, email_router, replies_router, approvals_router,
-          followups_router, scheduling_router, qa_router):
+          followups_router, scheduling_router, qa_router, demo_router):
     app.include_router(r)

@@ -42,9 +42,9 @@
         "filters": {
           "conditions": [
             {
-              "keyName": "api_key",
+              "keyName": "api_key_sha256",
               "condition": "eq",
-              "keyValue": "={{ $json.headers[\"x-api-key\"] || \"missing\" }}"
+              "keyValue": "={{ String($json.headers[\"x-api-key\"] || \"missing\").hash(\"sha256\") }}"
             }
           ]
         },
@@ -65,7 +65,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const req = $('Leaderboard Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key || key.active !== true || !['hr', 'hr_admin'].includes(key.client)) return fail(401, 'UNAUTHORIZED', 'Missing or invalid API key for this endpoint');\nconst q = req.query || {};\nconst errors = [];\nfor (const k of Object.keys(q)) if (!['period', 'team', 'limit', 'include_summary'].includes(k)) errors.push('unknown query parameter: ' + k);\nconst period = q.period == null || q.period === '' ? $now.toFormat('yyyy-MM') : String(q.period);\nif (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(period)) errors.push('period must be YYYY-MM');\nconst team = q.team == null || q.team === '' ? '' : String(q.team);\nif (team && !/^[a-z_]{2,40}$/.test(team)) errors.push('team must be lowercase letters or underscores');\nconst limit = q.limit == null || q.limit === '' ? 10 : Number(q.limit);\nif (!Number.isInteger(limit) || limit < 1 || limit > 50) errors.push('limit must be an integer from 1 to 50');\nconst inc = q.include_summary == null || q.include_summary === '' ? 'false' : String(q.include_summary);\nif (!['true', 'false'].includes(inc)) errors.push('include_summary must be true or false');\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, period, team, limit, include_summary: inc === 'true' } }];"
+        "jsCode": "const req = $('Leaderboard Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key_sha256 || key.active !== true || !['hr', 'hr_admin'].includes(key.client)) return fail(401, 'UNAUTHORIZED', 'Missing or invalid API key for this endpoint');\nconst q = req.query || {};\nconst errors = [];\nfor (const k of Object.keys(q)) if (!['period', 'team', 'limit', 'include_summary'].includes(k)) errors.push('unknown query parameter: ' + k);\nconst period = q.period == null || q.period === '' ? $now.toFormat('yyyy-MM') : String(q.period);\nif (!/^\\d{4}-(0[1-9]|1[0-2])$/.test(period)) errors.push('period must be YYYY-MM');\nconst team = q.team == null || q.team === '' ? '' : String(q.team);\nif (team && !/^[a-z_]{2,40}$/.test(team)) errors.push('team must be lowercase letters or underscores');\nconst limit = q.limit == null || q.limit === '' ? 10 : Number(q.limit);\nif (!Number.isInteger(limit) || limit < 1 || limit > 50) errors.push('limit must be an integer from 1 to 50');\nconst inc = q.include_summary == null || q.include_summary === '' ? 'false' : String(q.include_summary);\nif (!['true', 'false'].includes(inc)) errors.push('include_summary must be true or false');\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, period, team, limit, include_summary: inc === 'true' } }];"
       }
     },
     {

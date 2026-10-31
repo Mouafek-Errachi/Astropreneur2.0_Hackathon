@@ -29,11 +29,12 @@ def test_screening_flow_and_injection_flag(client, recruiter):
 def test_nothing_sent_without_approval(client, recruiter):
     e = client.post("/emails", json={"sender": "cand@example.com", "subject": "Hi", "body": "Any news on my application?"},
                     headers=recruiter).json()
+    before = len(client.get("/approvals/outbox", headers=recruiter).json())
     draft = client.post(f"/emails/{e['id']}/draft-reply", headers=recruiter).json()
-    assert client.get("/approvals/outbox", headers=recruiter).json() == []
+    assert len(client.get("/approvals/outbox", headers=recruiter).json()) == before
     r = client.post(f"/approvals/{draft['action_id']}/approve", json={}, headers=recruiter)
     assert r.status_code == 200 and r.json()["status"] == "executed"
     outbox = client.get("/approvals/outbox", headers=recruiter).json()
-    assert len(outbox) == 1 and outbox[0]["to"] == "cand@example.com"
+    assert len(outbox) == before + 1 and outbox[-1]["to"] == "cand@example.com"
     # cannot execute twice
     assert client.post(f"/approvals/{draft['action_id']}/approve", json={}, headers=recruiter).status_code == 409

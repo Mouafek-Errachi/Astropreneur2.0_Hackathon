@@ -42,9 +42,9 @@
         "filters": {
           "conditions": [
             {
-              "keyName": "api_key",
+              "keyName": "api_key_sha256",
               "condition": "eq",
-              "keyValue": "={{ $json.headers[\"x-api-key\"] || \"missing\" }}"
+              "keyValue": "={{ String($json.headers[\"x-api-key\"] || \"missing\").hash(\"sha256\") }}"
             }
           ]
         },
@@ -65,7 +65,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const req = $('Decision Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key || key.active !== true || key.client !== 'hr_admin') return fail(401, 'UNAUTHORIZED', 'Only the HR admin key can decide approvals');\nconst body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};\nconst errors = [];\nfor (const k of Object.keys(body)) if (!['approval_id', 'decision', 'reviewer_id', 'reason', 'edited_content'].includes(k)) errors.push('unknown field: ' + k);\nif (!/^apr_\\d{1,12}$/.test(String(body.approval_id || ''))) errors.push('approval_id must look like apr_123');\nif (!['approve', 'reject'].includes(body.decision)) errors.push('decision must be approve or reject');\nif (!/^[A-Za-z0-9_-]{1,64}$/.test(String(body.reviewer_id || ''))) errors.push('reviewer_id is required (letters, digits, _ or -)');\nconst clean = (s, n) => String(s ?? '').normalize('NFKC').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F\\u200B-\\u200F\\u202A-\\u202E\\uFEFF]/g, '').replace(/<[^>]*>/g, '').trim().slice(0, n);\nconst reason = body.reason == null ? '' : clean(body.reason, 300);\nif (body.reason != null && (typeof body.reason !== 'string' || body.reason.length > 300)) errors.push('reason must be a string of at most 300 characters');\nif (body.decision === 'reject' && !reason) errors.push('reason is required to reject');\nlet edited = null;\nif (body.edited_content != null) {\n  const ec = body.edited_content;\n  if (typeof ec !== 'object' || Array.isArray(ec)) errors.push('edited_content must be an object with subject and/or body');\n  else {\n    for (const k of Object.keys(ec)) if (!['subject', 'body'].includes(k)) errors.push('unknown edited_content field: ' + k);\n    if (ec.subject != null && (typeof ec.subject !== 'string' || ec.subject.length > 150)) errors.push('edited_content.subject must be at most 150 characters');\n    if (ec.body != null && (typeof ec.body !== 'string' || ec.body.length > 5000)) errors.push('edited_content.body must be at most 5000 characters');\n    edited = { subject: ec.subject == null ? null : clean(ec.subject, 150), body: ec.body == null ? null : clean(ec.body, 5000) };\n  }\n}\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, approval_id: body.approval_id, decision: body.decision, reviewer_id: body.reviewer_id, reason, edited_content: edited } }];"
+        "jsCode": "const req = $('Decision Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key_sha256 || key.active !== true || key.client !== 'hr_admin') return fail(401, 'UNAUTHORIZED', 'Only the HR admin key can decide approvals');\nconst body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};\nconst errors = [];\nfor (const k of Object.keys(body)) if (!['approval_id', 'decision', 'reviewer_id', 'reason', 'edited_content'].includes(k)) errors.push('unknown field: ' + k);\nif (!/^apr_\\d{1,12}$/.test(String(body.approval_id || ''))) errors.push('approval_id must look like apr_123');\nif (!['approve', 'reject'].includes(body.decision)) errors.push('decision must be approve or reject');\nconst owner = String(key.owner_id || '');\nif (!/^[A-Za-z0-9_-]{1,64}$/.test(owner)) return fail(403, 'KEY_NOT_BOUND', 'This API key is not bound to a person');\nif (body.reviewer_id != null && body.reviewer_id !== owner) return fail(403, 'IDENTITY_MISMATCH', 'reviewer_id must match the owner of the API key');\nconst clean = (s, n) => String(s ?? '').normalize('NFKC').replace(/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F\\u200B-\\u200F\\u202A-\\u202E\\uFEFF]/g, '').replace(/<[^>]*>/g, '').trim().slice(0, n);\nconst reason = body.reason == null ? '' : clean(body.reason, 300);\nif (body.reason != null && (typeof body.reason !== 'string' || body.reason.length > 300)) errors.push('reason must be a string of at most 300 characters');\nif (body.decision === 'reject' && !reason) errors.push('reason is required to reject');\nlet edited = null;\nif (body.edited_content != null) {\n  const ec = body.edited_content;\n  if (typeof ec !== 'object' || Array.isArray(ec)) errors.push('edited_content must be an object with subject and/or body');\n  else {\n    for (const k of Object.keys(ec)) if (!['subject', 'body'].includes(k)) errors.push('unknown edited_content field: ' + k);\n    if (ec.subject != null && (typeof ec.subject !== 'string' || ec.subject.length > 150)) errors.push('edited_content.subject must be at most 150 characters');\n    if (ec.body != null && (typeof ec.body !== 'string' || ec.body.length > 5000)) errors.push('edited_content.body must be at most 5000 characters');\n    edited = { subject: ec.subject == null ? null : clean(ec.subject, 150), body: ec.body == null ? null : clean(ec.body, 5000) };\n  }\n}\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, approval_id: body.approval_id, decision: body.decision, reviewer_id: owner, reason, edited_content: edited } }];"
       }
     },
     {
@@ -143,7 +143,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const v = $('Authorize and Validate').first().json;\nconst a = $input.first().json || {};\nconst rid = v.request_id;\nconst deny = (status, code, message) => [{ json: { outcome: 'respond', approval_id: v.approval_id, reviewer_id: v.reviewer_id, audit_action: 'decision_denied', audit_details: code, ai_json: '', final_json: '', status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!a.approval_id) return deny(404, 'NOT_FOUND', 'Approval not found');\nif (!['pending_approval', 'failed'].includes(a.status)) return deny(409, 'ALREADY_DECIDED', 'This approval is already ' + a.status);\nif (a.type === 'broadcast' && a.created_by === v.reviewer_id) return deny(403, 'FOUR_EYES', 'The person who created a broadcast cannot approve it');\nlet p = {};\ntry { p = JSON.parse(a.payload || '{}'); } catch (e) { p = {}; }\nconst aiDraft = p.ai_draft || p.draft || null;\nlet finalDraft = p.draft || null;\nlet edited = false;\nif (v.decision === 'approve' && v.edited_content && finalDraft) {\n  finalDraft = { subject: v.edited_content.subject || finalDraft.subject, body: v.edited_content.body || finalDraft.body };\n  edited = !aiDraft || finalDraft.subject !== aiDraft.subject || finalDraft.body !== aiDraft.body;\n}\np.draft = finalDraft;\nreturn [{ json: {\n  outcome: v.decision, type: a.type, approval_id: a.approval_id, target_ref: a.target_ref,\n  reviewer_id: v.reviewer_id, reason: v.reason, edited, decided_at: $now.toISO(), request_id: rid,\n  payload: p, payload_json: JSON.stringify(p),\n  ai_json: JSON.stringify(aiDraft), final_json: JSON.stringify(finalDraft),\n  audit_action: v.decision === 'approve' ? 'approval_approved' : 'approval_rejected', audit_details: v.reason || ''\n} }];"
+        "jsCode": "const v = $('Authorize and Validate').first().json;\nconst a = $input.first().json || {};\nconst rid = v.request_id;\nconst deny = (status, code, message) => [{ json: { outcome: 'respond', approval_id: v.approval_id, reviewer_id: v.reviewer_id, audit_action: 'decision_denied', audit_details: code, ai_json: '', final_json: '', status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!a.approval_id) return deny(404, 'NOT_FOUND', 'Approval not found');\nif (!['pending_approval', 'failed'].includes(a.status)) return deny(409, 'ALREADY_DECIDED', 'This approval is already ' + a.status);\nif (a.type === 'broadcast' && a.created_by === v.reviewer_id) return deny(403, 'FOUR_EYES', 'The person who created a broadcast cannot approve it');\nlet p = {};\ntry { p = JSON.parse(a.payload || '{}'); } catch (e) { p = {}; }\nconst aiDraft = p.ai_draft || p.draft || null;\nlet finalDraft = p.draft || null;\nlet edited = false;\nif (v.decision === 'approve' && v.edited_content && finalDraft) {\n  finalDraft = { subject: v.edited_content.subject || finalDraft.subject, body: v.edited_content.body || finalDraft.body };\n  edited = !aiDraft || finalDraft.subject !== aiDraft.subject || finalDraft.body !== aiDraft.body;\n}\np.draft = finalDraft;\nreturn [{ json: {\n  outcome: v.decision, type: a.type, approval_id: a.approval_id, target_ref: a.target_ref,\n  reviewer_id: v.reviewer_id, reason: v.reason, edited, expected_status: a.status, lock_token: 'lock_' + $execution.id, decided_at: $now.toISO(), request_id: rid,\n  payload: p, payload_json: JSON.stringify(p),\n  ai_json: JSON.stringify(aiDraft), final_json: JSON.stringify(finalDraft),\n  audit_action: v.decision === 'approve' ? 'approval_approved' : 'approval_rejected', audit_details: v.reason || ''\n} }];"
       }
     },
     {
@@ -328,6 +328,11 @@
               "keyName": "approval_id",
               "condition": "eq",
               "keyValue": "={{ $('Check Decision').first().json.approval_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.expected_status }}"
             }
           ]
         },
@@ -338,7 +343,8 @@
             "decided_by": "={{ $('Check Decision').first().json.reviewer_id }}",
             "edited_by_human": "={{ $('Check Decision').first().json.edited }}",
             "decided_at": "={{ $('Check Decision').first().json.decided_at }}",
-            "payload": "={{ $('Check Decision').first().json.payload_json }}"
+            "payload": "={{ $('Check Decision').first().json.payload_json }}",
+            "lock_token": "={{ $('Check Decision').first().json.lock_token }}"
           },
           "schema": [
             {
@@ -385,6 +391,15 @@
               "display": true,
               "type": "string",
               "canBeUsedToMatch": true
+            },
+            {
+              "id": "lock_token",
+              "displayName": "lock_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
             }
           ]
         }
@@ -397,7 +412,7 @@
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
       "position": [
-        1800,
+        2200,
         100
       ],
       "parameters": {
@@ -477,7 +492,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        2000,
+        2400,
         -100
       ],
       "parameters": {
@@ -508,7 +523,7 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        2200,
+        2600,
         -100
       ],
       "parameters": {
@@ -531,7 +546,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        2600,
+        3000,
         100
       ],
       "parameters": {
@@ -589,7 +604,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        2600,
+        3000,
         300
       ],
       "parameters": {
@@ -647,7 +662,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        2000,
+        2400,
         100
       ],
       "parameters": {
@@ -678,7 +693,7 @@
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
       "position": [
-        2200,
+        2600,
         100
       ],
       "parameters": {
@@ -701,7 +716,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        2400,
+        2800,
         100
       ],
       "parameters": {
@@ -748,7 +763,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        2000,
+        2400,
         300
       ],
       "parameters": {
@@ -892,6 +907,11 @@
               "keyName": "approval_id",
               "condition": "eq",
               "keyValue": "={{ $('Check Decision').first().json.approval_id }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.expected_status }}"
             }
           ]
         },
@@ -901,7 +921,8 @@
             "status": "rejected",
             "decided_by": "={{ $('Check Decision').first().json.reviewer_id }}",
             "decided_at": "={{ $('Check Decision').first().json.decided_at }}",
-            "reason": "={{ $('Check Decision').first().json.reason }}"
+            "reason": "={{ $('Check Decision').first().json.reason }}",
+            "lock_token": "={{ $('Check Decision').first().json.lock_token }}"
           },
           "schema": [
             {
@@ -939,6 +960,15 @@
               "display": true,
               "type": "string",
               "canBeUsedToMatch": true
+            },
+            {
+              "id": "lock_token",
+              "displayName": "lock_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
             }
           ]
         }
@@ -951,7 +981,7 @@
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        1800,
+        2200,
         500
       ],
       "parameters": {
@@ -999,7 +1029,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2000,
+        2400,
         500
       ],
       "parameters": {
@@ -1014,7 +1044,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        3000,
+        3400,
         400
       ],
       "parameters": {
@@ -1046,7 +1076,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2800,
+        3200,
         100
       ],
       "parameters": {
@@ -1061,7 +1091,7 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2800,
+        3200,
         300
       ],
       "parameters": {
@@ -1076,7 +1106,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2400,
+        2800,
         -100
       ],
       "parameters": {
@@ -1107,7 +1137,7 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        2300,
+        2700,
         200
       ],
       "parameters": {
@@ -1130,6 +1160,149 @@
           ],
           "combinator": "and"
         }
+      }
+    },
+    {
+      "id": "cb64f2ae-e22d-47c3-a0da-957e28f8388b",
+      "name": "Verify Approve Lock",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1800,
+        100
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "approval_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.approval_id }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "id": "d33d2b2f-18e7-43a0-8bfe-b4bd050d0531",
+      "name": "Approve Lock Held?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2000,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lock_token === $('Check Decision').first().json.lock_token && $json.status === 'approved' }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "61cd1761-59fb-497e-a9e0-891af3d8bea3",
+      "name": "Verify Reject Lock",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1800,
+        500
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "approval_id",
+              "condition": "eq",
+              "keyValue": "={{ $('Check Decision').first().json.approval_id }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true,
+      "executeOnce": true
+    },
+    {
+      "id": "5cd8cbbc-17cc-47f4-a5f8-13ebfc7176b3",
+      "name": "Reject Lock Held?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2000,
+        500
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lock_token === $('Check Decision').first().json.lock_token && $json.status === 'rejected' }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "35fbb88a-866a-49c0-aa5a-59f634bd0c15",
+      "name": "Lock Lost Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        700
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const d = $('Check Decision').first().json;\nreturn [{ json: { status_code: 409, response: { ok: false, request_id: d.request_id, error: { code: 'ALREADY_DECIDED', message: 'Another decision on this item was recorded first' } } } }];"
       }
     }
   ],
@@ -1247,7 +1420,7 @@
       "main": [
         [
           {
-            "node": "Route Type",
+            "node": "Verify Approve Lock",
             "type": "main",
             "index": 0
           }
@@ -1385,7 +1558,7 @@
       "main": [
         [
           {
-            "node": "Return Ticket to HR",
+            "node": "Verify Reject Lock",
             "type": "main",
             "index": 0
           }
@@ -1477,6 +1650,75 @@
         [
           {
             "node": "Mark Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Approve Lock": {
+      "main": [
+        [
+          {
+            "node": "Approve Lock Held?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approve Lock Held?": {
+      "main": [
+        [
+          {
+            "node": "Route Type",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lock Lost Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Reject Lock": {
+      "main": [
+        [
+          {
+            "node": "Reject Lock Held?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject Lock Held?": {
+      "main": [
+        [
+          {
+            "node": "Return Ticket to HR",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lock Lost Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lock Lost Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
             "type": "main",
             "index": 0
           }

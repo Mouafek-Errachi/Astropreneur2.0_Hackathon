@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from backend.core import injection
 from backend.core.security import Principal, require
 from backend.db import get_session
 from backend.features.employee_qa.answerer import answer
 from backend.features.employee_qa.indexer import reindex, search
+from backend.models import PolicyChunk
 from backend.schemas import AskRequest, AskResponse
 
 router = APIRouter(prefix="/qa", tags=["employee_qa"])
@@ -19,6 +20,8 @@ def do_reindex(p: Principal = Depends(require("qa:admin")), session: Session = D
 @router.post("/ask", response_model=AskResponse)
 def ask(body: AskRequest, p: Principal = Depends(require("qa:ask")), session: Session = Depends(get_session)):
     flags = injection.scan(body.question)
+    if session.exec(select(PolicyChunk.id).where(PolicyChunk.tenant_id == p.tenant_id)).first() is None:
+        reindex(session, p.tenant_id)  # first question on a fresh install: index the company policies
     hits = search(session, p.tenant_id, body.question)
     result, fallback = answer(body.question, hits)
     return AskResponse(answer=result.answer,

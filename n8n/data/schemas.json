@@ -1,7 +1,7 @@
 {
   "hr_api_keys": [
     {
-      "name": "api_key",
+      "name": "api_key_sha256",
       "type": "string"
     },
     {
@@ -10,6 +10,10 @@
     },
     {
       "name": "label",
+      "type": "string"
+    },
+    {
+      "name": "owner_id",
       "type": "string"
     },
     {
@@ -47,7 +51,7 @@
       "type": "string"
     },
     {
-      "name": "portal_token",
+      "name": "portal_token_sha256",
       "type": "string"
     },
     {
@@ -258,6 +262,10 @@
     },
     {
       "name": "decided_at",
+      "type": "string"
+    },
+    {
+      "name": "lock_token",
       "type": "string"
     }
   ],
