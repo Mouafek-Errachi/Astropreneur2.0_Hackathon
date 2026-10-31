@@ -61,14 +61,17 @@ def test_payload_tampering_after_approval_is_refused(client, recruiter):
         assert not executor.verify(appr, action)
 
 
-def test_high_risk_requires_acknowledgement(client, recruiter, demo):
+def test_high_risk_requires_acknowledgement(client, recruiter, admin, demo):
     ranking = client.get(f"/jobs/{demo['job_id']}/ranking", headers=recruiter).json()
     risky = next(r for r in ranking if r["risk_level"] == "high")
     a = client.post(f"/applications/{risky['application_id']}/decision", json={"decision": "shortlisted"},
                     headers=recruiter).json()
     assert a["risk_level"] == "high"
-    assert client.post(f"/approvals/{a['action_id']}/approve", json={}, headers=recruiter).status_code == 400
-    r = client.post(f"/approvals/{a['action_id']}/approve", json={"acknowledge_risk": True}, headers=recruiter)
+    assert client.post(f"/approvals/{a['action_id']}/approve", json={}, headers=admin).status_code == 400
+    # four-eyes: the recruiter who proposed it cannot approve it, even acknowledging the risk
+    assert client.post(f"/approvals/{a['action_id']}/approve", json={"acknowledge_risk": True},
+                       headers=recruiter).status_code == 403
+    r = client.post(f"/approvals/{a['action_id']}/approve", json={"acknowledge_risk": True}, headers=admin)
     assert r.json()["status"] == "executed"
 
 

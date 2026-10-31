@@ -32,7 +32,7 @@ def mask_identity(text: str) -> tuple[str, list[str]]:
 
 def audit(resume_text: str, criteria: dict, original_score: float) -> dict:
     masked, applied = mask_identity(resume_text)
-    profile, _ = ranker.extract_profile(masked)
+    profile, _ = ranker.extract_profile(masked, criteria.get("required_skills", []) + criteria.get("nice_to_have", []))
     cf = ranker.score(profile, criteria)["total"]
     return {"original_score": original_score, "counterfactual_score": cf,
             "rank_delta": round(cf - original_score, 1), "counterfactuals": {"masked": applied}}

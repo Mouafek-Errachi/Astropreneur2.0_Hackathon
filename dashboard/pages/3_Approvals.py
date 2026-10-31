@@ -1,10 +1,19 @@
+from datetime import datetime
+
 import streamlit as st
 
 from api import call, require_login
 
 require_login()
 st.header("Approval queue (human in the loop)")
-st.caption("Agents only propose. Each approval is signed and verified by the executor before anything is sent or recorded.")
+st.caption("Agents only propose. Each approval is signed and verified by the executor before anything is sent or recorded. "
+           "Decisions about a candidate, learned weights and broadcasts need a second person.")
+
+
+def _slot_label(s: dict) -> str:
+    start, end = datetime.fromisoformat(s["start"]), datetime.fromisoformat(s["end"])
+    return f"{start:%a %d %b, %H:%M}-{end:%H:%M}"
+
 
 RISK = {"none": "🟢", "low": "🟡", "medium": "🟠", "high": "🔴"}
 pending = call("GET", "/approvals", params={"status": "pending"}) or []
@@ -21,10 +30,15 @@ for a in pending:
             st.text(f"To: {p.get('to')}  (the recipient cannot be edited)")
             subject = st.text_input("Subject", p.get("subject", ""), key=f"s{a['id']}")
             body = st.text_area("Body", p.get("body", ""), key=f"b{a['id']}", height=220)
+        slot = None
         if "slots" in p:
-            st.write("Slots offered:", ", ".join(s["start"].replace("T", " ")[:16] for s in p["slots"]))
+            options = [None] + list(range(len(p["slots"])))
+            slot = st.radio("Interview slot", options, key=f"slot{a['id']}",
+                            format_func=lambda i, slots=p["slots"]: "Let the candidate choose (single-use link)"
+                            if i is None else f"Book now: {_slot_label(slots[i])}")
         if "body" not in p:
             st.json(p)
+        note = st.text_input("Note", key=f"n{a['id']}")
         ack = st.checkbox("I reviewed the risk flags", key=f"k{a['id']}") if a["risk_level"] == "high" else False
         c1, c2, _ = st.columns([1, 1, 4])
         if c1.button("✅ Approve", key=f"a{a['id']}"):
@@ -33,13 +47,14 @@ for a in pending:
                 edits["edited_subject"] = subject
             if body is not None and body != p.get("body"):
                 edits["edited_body"] = body
-            r = call("POST", f"/approvals/{a['id']}/approve", json={**edits, "acknowledge_risk": ack})
+            r = call("POST", f"/approvals/{a['id']}/approve",
+                     json={**edits, "acknowledge_risk": ack, "selected_slot": slot, "note": note})
             if r:
                 st.toast(f"{r['status']}: {r['result']}")
                 st.rerun()
         if c2.button("❌ Reject", key=f"r{a['id']}"):
-            call("POST", f"/approvals/{a['id']}/reject", json={})
-            st.rerun()
+            if call("POST", f"/approvals/{a['id']}/reject", json={"note": note}):
+                st.rerun()
 
 tab1, tab2 = st.tabs(["Sent emails", "History"])
 with tab1:

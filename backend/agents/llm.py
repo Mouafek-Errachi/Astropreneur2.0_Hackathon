@@ -3,9 +3,15 @@
 LLM_PROVIDER = mock | gemini | grok, plus an optional LLM_FALLBACK_PROVIDER.
 Agents get no tools: they return JSON that is validated against a strict Pydantic schema
 (retry on invalid output, then fall back to a deterministic mock so a batch never breaks).
+
+Gemini runs a model pool (GEMINI_MODEL + GEMINI_FALLBACK_MODELS): free-tier quotas are per model and per
+minute, so a rate-limited model cools down for the delay Google asks for while the next model takes over.
 """
 import json
 import logging
+import re
+import threading
+import time
 from typing import Callable, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -24,6 +30,11 @@ BASE_SYSTEM = (
 )
 
 _clients: dict[str, object] = {}
+_warned: set[str] = set()
+_lock = threading.Lock()  # bulk screening calls the LLM from several threads
+_cooldown: dict[str, float] = {}  # Gemini model -> time.monotonic() when it may be called again
+OVERLOADED = {429, 500, 502, 503, 504}
+RETRY_IN = re.compile(r"retry in ([\d.]+)s", re.I)
 
 
 def wrap_untrusted(text: str, source: str = "document") -> str:
@@ -41,47 +52,104 @@ def _prompt(task: str, trusted_context: str, untrusted: str, source: str, schema
     return "\n\n".join(parts)
 
 
-# ------------------------------------------------------------------ providers
-def _gemini(prompt: str) -> str:
-    from google import genai
-    from google.genai import types
+def _client(name: str, factory: Callable):
+    # Created once under a lock: two threads building their own client would close each other's connection.
+    with _lock:
+        if name not in _clients:
+            _clients[name] = factory()
+        return _clients[name]
 
+
+# ------------------------------------------------------------------ Gemini (model pool)
+def _gemini():
+    def make():
+        from google import genai
+        from google.genai import types
+
+        # No SDK retries: _ask_gemini handles 429/5xx itself, using the delay Google asks for.
+        return genai.Client(api_key=get_settings().gemini_api_key,
+                            http_options=types.HttpOptions(timeout=30_000,
+                                                           retry_options=types.HttpRetryOptions(attempts=1)))
+
+    return _client("gemini", make)
+
+
+def _gemini_models() -> list[str]:
     s = get_settings()
-    if "gemini" not in _clients:
-        _clients["gemini"] = genai.Client(api_key=s.gemini_api_key)
-    resp = _clients["gemini"].models.generate_content(
-        model=s.gemini_model,
-        contents=prompt,
-        config=types.GenerateContentConfig(system_instruction=BASE_SYSTEM, response_mime_type="application/json"),
+    return list(dict.fromkeys(m.strip() for m in [s.gemini_model, *s.gemini_fallback_models.split(",")] if m.strip()))
+
+
+def _pick(models: list[str]) -> tuple[str | None, float]:
+    """The first model that is not cooling down, or how long until one is free."""
+    with _lock:
+        now = time.monotonic()
+        free = [m for m in models if _cooldown.get(m, 0) <= now]
+        return (free[0], 0.0) if free else (None, min(_cooldown[m] for m in models) - now)
+
+
+def _cool(model: str, seconds: float) -> None:
+    with _lock:
+        _cooldown[model] = max(_cooldown.get(model, 0), time.monotonic() + seconds)
+
+
+def _ask_gemini(prompt: str, schema: type[T]) -> str:
+    from google.genai import errors, types
+
+    config = types.GenerateContentConfig(
+        system_instruction=BASE_SYSTEM,
+        response_mime_type="application/json",
+        response_json_schema=schema.model_json_schema(),  # Gemini ignores maxLength: Pydantic re-checks
+        temperature=0.2,
+        max_output_tokens=8000,
     )
-    return resp.text or ""
+    models = _gemini_models()
+    deadline = time.monotonic() + get_settings().gemini_wait_budget_s
+    while True:
+        model, wait = _pick(models)
+        if model is None:
+            if time.monotonic() + wait > deadline:
+                raise TimeoutError("every Gemini model is rate-limited or busy")
+            time.sleep(wait)
+            continue
+        try:
+            resp = _gemini().models.generate_content(model=model, contents=prompt, config=config)
+        except errors.APIError as e:
+            if e.code not in OVERLOADED:
+                raise
+            hint = RETRY_IN.search(str(e))
+            delay = float(hint.group(1)) if hint else (10.0 if e.code == 429 else 5.0)
+            _cool(model, min(delay + 0.5, 60.0))
+            log.info("Gemini %s busy (%s), cooling down %.0fs", model, e.code, delay)
+            continue
+        if not resp.text:
+            raise ValueError(f"empty response (prompt_feedback={resp.prompt_feedback})")
+        return resp.text
 
 
-def _grok(prompt: str) -> str:
-    # xAI exposes an OpenAI-compatible API.
-    from openai import OpenAI
+# ------------------------------------------------------------------ Grok (xAI, OpenAI-compatible API)
+def _ask_grok(prompt: str, schema: type[T]) -> str:
+    def make():
+        from openai import OpenAI
 
-    s = get_settings()
-    if "grok" not in _clients:
-        _clients["grok"] = OpenAI(api_key=s.grok_api_key, base_url=s.grok_base_url, timeout=s.llm_timeout_seconds)
-    resp = _clients["grok"].chat.completions.create(
-        model=s.grok_model,
+        s = get_settings()
+        return OpenAI(api_key=s.grok_api_key, base_url=s.grok_base_url, timeout=s.llm_timeout_seconds)
+
+    resp = _client("grok", make).chat.completions.create(
+        model=get_settings().grok_model,
         messages=[{"role": "system", "content": BASE_SYSTEM}, {"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
     )
     return resp.choices[0].message.content or ""
 
 
-PROVIDERS: dict[str, Callable[[str], str]] = {"gemini": _gemini, "grok": _grok}
+PROVIDERS: dict[str, tuple[Callable[[str, type], str], str]] = {
+    "gemini": (_ask_gemini, "gemini_api_key"),
+    "grok": (_ask_grok, "grok_api_key"),
+}
 
 
 def gemini_embed(text: str) -> list[float]:
-    from google import genai
-
-    s = get_settings()
-    if "gemini" not in _clients:
-        _clients["gemini"] = genai.Client(api_key=s.gemini_api_key)
-    res = _clients["gemini"].models.embed_content(model=s.gemini_embedding_model, contents=text)
+    res = _gemini().models.embed_content(model=get_settings().gemini_embedding_model, contents=text)
     return list(res.embeddings[0].values)
 
 
@@ -92,19 +160,33 @@ def _parse(raw: str, schema: type[T]) -> T:
     return schema.model_validate(json.loads(raw))
 
 
+def _ready(provider: str) -> bool:
+    """Known provider with a key; warns once otherwise (the mock takes over)."""
+    entry = PROVIDERS.get(provider)
+    problem = (f"unknown LLM provider {provider!r}" if entry is None
+               else f"{entry[1].upper()} is empty" if not getattr(get_settings(), entry[1]) else "")
+    if problem and problem not in _warned:
+        _warned.add(problem)
+        log.error("LLM provider %s not usable (%s): using the rule-based fallback", provider, problem)
+    return not problem
+
+
 def complete_json(task: str, schema: type[T], mock: Callable[[], dict], *, untrusted: str = "",
                   source: str = "document", trusted_context: str = "") -> tuple[T, bool]:
     """Returns (validated_output, used_fallback)."""
     s = get_settings()
-    chain = [p for p in (s.llm_provider, s.llm_fallback_provider) if p in PROVIDERS]
-    prompt = _prompt(task, trusted_context, untrusted, source, schema) if chain else ""
+    if s.llm_provider == "mock":
+        return schema.model_validate(mock()), False
+    chain = [p for p in dict.fromkeys((s.llm_provider, s.llm_fallback_provider)) if p and _ready(p)]
+    prompt = _prompt(task, trusted_context, untrusted, source, schema)
     for provider in chain:
+        ask = PROVIDERS[provider][0]
         for attempt in range(s.llm_max_retries + 1):
             try:
-                return _parse(PROVIDERS[provider](prompt), schema), False
-            except (ValidationError, json.JSONDecodeError, ValueError) as e:
+                return _parse(ask(prompt, schema), schema), False
+            except (ValidationError, json.JSONDecodeError, ValueError) as e:  # bad output: ask again
                 log.warning("%s returned invalid output (attempt %s): %s", provider, attempt + 1, e)
-            except Exception as e:  # network / auth / quota
-                log.warning("%s call failed (attempt %s): %s", provider, attempt + 1, e)
+            except Exception as e:  # network / quota / auth: move to the fallback provider
+                log.warning("%s call failed: %s", provider, e)
                 break
-    return schema.model_validate(mock()), bool(chain)
+    return schema.model_validate(mock()), True

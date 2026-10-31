@@ -6,7 +6,7 @@ pydantic[email]>=2.7
 pydantic-settings>=2.3
 psycopg[binary]>=3.2  # only used when DATABASE_URL points at Postgres
 # L3 agents: Gemini + Grok (xAI exposes an OpenAI-compatible API)
-google-genai>=1.0
+google-genai>=2.34  # response_json_schema + per-call retry options
 openai>=1.40
 # File guard
 pdfplumber>=0.11
@@ -20,7 +20,7 @@ bcrypt==4.0.1
 slowapi>=0.1.9
 python-multipart>=0.0.9
 # L1 dashboard
-streamlit>=1.38
+streamlit>=1.66
 requests>=2.32
 pandas>=2.2
 # Tests + demo data generation

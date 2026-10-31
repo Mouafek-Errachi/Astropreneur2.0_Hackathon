@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import ValidationError
 from sqlmodel import Session, select
 
@@ -67,8 +67,9 @@ def classify(p: Principal = Depends(require("emails:process")), session: Session
 
 
 @router.get("/emails/digest")
-def digest(p: Principal = Depends(require("emails:read")), session: Session = Depends(get_session)):
-    return inbox.digest(session.exec(select(EmailMessage).where(EmailMessage.tenant_id == p.tenant_id)).all())
+def digest(hours: int = Query(24 * 7, ge=1, le=24 * 30), p: Principal = Depends(require("emails:read")),
+           session: Session = Depends(get_session)):
+    return inbox.digest(session.exec(select(EmailMessage).where(EmailMessage.tenant_id == p.tenant_id)).all(), hours)
 
 
 @router.post("/emails/{email_id}/draft-reply")

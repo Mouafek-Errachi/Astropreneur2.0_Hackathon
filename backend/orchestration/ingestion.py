@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 
 from backend.data import storage, vectors
 from backend.data.models import Application, Candidate, EmailMessage, JobOffer, Resume, utcnow
+from backend.orchestration import followups
 from backend.security import audit, events
 from backend.security.guard import inspect_text
 from backend.security.guard.files import FileRejected, extract
@@ -40,6 +41,9 @@ def ingest_email(session: Session, tenant_id: int, *, sender: str, subject: str,
                       detail={"sender": e.sender, "flags": [f.to_dict() for f in g.flags][:10]})
     audit.log(session, actor=actor, event="email.ingested", tenant_id=tenant_id, target=f"email:{e.id}",
               detail={"risk": g.risk_level, "quarantined": g.quarantine})
+    if not g.quarantine:
+        followups.close_for_sender(session, tenant_id, e.sender)  # a candidate answered: no reminder needed any more
+    session.refresh(e)
     return e
 
 
@@ -54,9 +58,14 @@ def ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: str
                       detail={"filename": name, "reason": str(e)})
         return {"filename": name, "accepted": False, "error": str(e)}
     sha = hashlib.sha256(data).hexdigest()
-    if session.exec(select(Resume).where(Resume.tenant_id == tenant_id, Resume.sha256 == sha)).first():
+    same_job = (select(Resume.id).join(Application, Application.resume_id == Resume.id)
+                .where(Resume.tenant_id == tenant_id, Application.job_id == job.id))
+    if session.exec(same_job.where(Resume.sha256 == sha)).first():
         storage.discard(qpath)
-        return {"filename": name, "accepted": False, "error": "duplicate file"}
+        return {"filename": name, "accepted": False, "error": "duplicate file for this job"}
+    if session.exec(same_job.where(Resume.raw_text == doc.text)).first():
+        storage.discard(qpath)
+        return {"filename": name, "accepted": False, "error": "same content as a resume already uploaded for this job"}
 
     cand = Candidate(tenant_id=tenant_id)
     session.add(cand)

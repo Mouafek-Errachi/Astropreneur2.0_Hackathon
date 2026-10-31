@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,13 +26,14 @@ def propose(body: ScheduleRequest, p: Principal = Depends(require("scheduling:ma
     except ValueError:
         raise HTTPException(404, "Application not found")
     a = scheduling.propose_interview(session, app, body.interviewer, body.duration_minutes, body.days_ahead, p.subject)
-    return {"action_id": str(a.id), "status": a.status}
+    return {"action_id": str(a.id), "status": a.status, "slots": json.loads(a.payload)["slots"]}
 
 
 @router.get("/scheduling/events")
 def events(p: Principal = Depends(require("scheduling:read")), session: Session = Depends(get_session)):
     rows = session.exec(select(CalendarEvent).where(CalendarEvent.tenant_id == p.tenant_id).order_by(CalendarEvent.start))
-    return [{"interviewer": e.interviewer, "title": e.title, "start": e.start, "end": e.end} for e in rows]
+    return [{"interviewer": e.interviewer, "title": e.title, "start": e.start, "end": e.end,
+             "candidate_id": str(e.candidate_id) if e.candidate_id else None} for e in rows]
 
 
 # ---------------------------------------------------------------- public magic-link (no login, single use)

@@ -1,13 +1,17 @@
 """Inbox workflows: classify -> digest by urgency -> draft reply (queued for approval)."""
 import json
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 
 from sqlmodel import Session, select
 
 from backend.agents import classifier, drafter
-from backend.data.models import Application, Candidate, EmailMessage, JobOffer, ProposedAction
-from backend.orchestration import workflow
+from backend.config import get_settings
+from backend.data.models import Application, Candidate, EmailMessage, JobOffer, ProposedAction, utcnow
+from backend.orchestration import followups, workflow
 
+URGENCIES = ("high", "medium", "low")
 URGENCY_ORDER = {"high": 0, "medium": 1, "low": 2, None: 3}
 
 
@@ -15,8 +19,9 @@ def classify_pending(session: Session, tenant_id: int) -> int:
     rows = session.exec(select(EmailMessage).where(EmailMessage.tenant_id == tenant_id,
                                                    EmailMessage.category == None,  # noqa: E711
                                                    EmailMessage.quarantined == False)).all()  # noqa: E712
-    for e in rows:
-        result, _ = classifier.classify(e.subject, e.body)
+    with ThreadPoolExecutor(max_workers=max(1, get_settings().llm_concurrency)) as pool:  # LLM calls only
+        results = list(pool.map(lambda e: classifier.classify(e.subject, e.body)[0], rows))
+    for e, result in zip(rows, results):
         e.category, e.urgency, e.summary, e.needs_reply = result.category, result.urgency, result.summary, result.needs_reply
         if result.injection_attempt_observed and e.risk_level == "none":
             e.risk_level = "low"
@@ -25,16 +30,33 @@ def classify_pending(session: Session, tenant_id: int) -> int:
     return len(rows)
 
 
-def digest(emails: list[EmailMessage]) -> dict:
+def digest(emails: list[EmailMessage], hours: int) -> dict:
+    """Deterministic digest of the inbox window, grouped by type and urgency. Built from classified fields only,
+    so text inside an email cannot rewrite the digest."""
+    since = (utcnow() - timedelta(hours=hours)).replace(tzinfo=None)
+    emails = [e for e in emails if e.received_at.replace(tzinfo=None) >= since]
     open_ = [e for e in emails if not e.handled and not e.quarantined]
+    classified = [e for e in emails if e.category]
+    groups = []
+    for category, count in Counter(e.category for e in classified).most_common():
+        in_cat = [e for e in classified if e.category == category]
+        groups.append({"category": category, "total": count, **{u: sum(e.urgency == u for e in in_cat) for u in URGENCIES}})
+    needs_reply = [{"id": str(e.id), "sender": e.sender, "subject": e.subject, "urgency": e.urgency, "summary": e.summary}
+                   for e in sorted(open_, key=lambda e: URGENCY_ORDER.get(e.urgency, 3)) if e.needs_reply]
+    urgent = [x for x in needs_reply if x["urgency"] == "high"]
+    quarantined = sum(e.quarantined for e in emails)
+    flagged = [{"id": str(e.id), "sender": e.sender, "subject": e.subject, "risk": e.risk_level}
+               for e in emails if e.risk_level in ("medium", "high")]
+    headline = (f"{len(emails)} emails in the last {hours}h: {len(urgent)} urgent, {len(needs_reply)} need a human "
+                f"answer, {len(flagged)} flagged as suspicious ({quarantined} quarantined).")
+    if len(classified) + quarantined < len(emails):
+        headline += f" {len(emails) - len(classified) - quarantined} not classified yet."
     return {
-        "total": len(emails),
+        "hours": hours, "headline": headline, "total": len(emails),
         "unread_by_urgency": dict(Counter(e.urgency or "unclassified" for e in open_)),
-        "by_category": dict(Counter(e.category for e in emails if e.category)),
-        "needs_reply": sum(e.needs_reply for e in open_),
-        "quarantined": sum(e.quarantined for e in emails),
-        "top_urgent": [{"id": str(e.id), "sender": e.sender, "summary": e.summary or e.subject}
-                       for e in sorted(open_, key=lambda e: URGENCY_ORDER.get(e.urgency, 3)) if e.urgency == "high"][:10],
+        "by_category": dict(Counter(e.category for e in classified)),
+        "groups": groups, "needs_reply": len(needs_reply), "needs_reply_list": needs_reply,
+        "quarantined": quarantined, "flagged": flagged, "top_urgent": urgent[:10],
     }
 
 
@@ -70,3 +92,4 @@ def _after_reply(session: Session, action: ProposedAction) -> None:
         if e:
             e.handled = True
             session.add(e)
+            followups.close_email_followups(session, e.tenant_id, str(e.id))

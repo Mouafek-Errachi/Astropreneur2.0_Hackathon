@@ -5,6 +5,7 @@ from api import call, require_login
 require_login()
 me = st.session_state.get("me") or call("GET", "/auth/me")
 st.header("Ask HR")
+st.caption("Answers come only from company policy documents, with sources. Anything else is escalated to HR.")
 
 q = st.text_input("Ask a question about HR policies (leave, payroll, remote work, benefits…)")
 if q and st.button("Ask"):
@@ -12,6 +13,8 @@ if q and st.button("Ask"):
     if r:
         st.write(r["answer"])
         st.caption(f"Confidence: {r['confidence']} · Sources: {', '.join(s['label'] for s in r['sources']) or '—'}")
+        if r["flags"]:
+            st.warning("This question contains text that looks like an instruction to the AI. It was treated as a question only.")
         if r["escalate_to_hr"]:
             st.warning("Not covered by the policies: flagged for the HR team.")
 

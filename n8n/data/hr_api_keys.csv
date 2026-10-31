@@ -1,5 +1,5 @@
-api_key,client,label,active
-<EXTENSION_API_KEY>,extension,Chrome interview extension,true
-<HR_DASHBOARD_API_KEY>,hr,HR dashboard,true
-<HR_ADMIN_API_KEY>,hr_admin,HR admin (approvals),true
-<EMPLOYEE_PORTAL_API_KEY>,employee_portal,Employee portal,true
+api_key_sha256,client,label,owner_id,active
+<SHA256_OF_EXTENSION_API_KEY>,extension,Chrome interview extension,,true
+<SHA256_OF_HR_DASHBOARD_API_KEY>,hr,HR dashboard (Amira),hr_amira,true
+<SHA256_OF_HR_ADMIN_API_KEY>,hr_admin,HR admin approvals (Youssef),hr_youssef,true
+<SHA256_OF_EMPLOYEE_PORTAL_API_KEY>,employee_portal,Employee portal,,true

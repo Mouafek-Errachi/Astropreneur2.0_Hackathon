@@ -16,14 +16,20 @@ from email.message import EmailMessage as MimeMessage
 from email.utils import make_msgid
 
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from backend.config import get_settings
-from backend.data.models import (Application, Approval, Candidate, PointsLedger, PointsRule, ProposedAction,
+from backend.data.models import (Application, Approval, Candidate, JobOffer, PointsLedger, PointsRule, ProposedAction,
                                  SchedulingToken, SentEmail, utcnow)
+from backend.agents.drafter import INVITE_WHEN
 from backend.security import audit
 from backend.security.gateway import Principal
 from backend.security.validator import check_outgoing_text
+
+FOUR_EYES_ALWAYS = {"broadcast"}  # a team-wide email always needs a second person
+FOUR_EYES_DECISIONS = {"record_decision", "apply_weights"}  # decisions about people and how they are scored
+
 
 # ------------------------------------------------------------------ signing
 def payload_hash(payload: str) -> str:
@@ -60,24 +66,47 @@ def _decide(session: Session, action: ProposedAction, reviewer: Principal, decis
     return approval
 
 
+def _commit_decision(session: Session) -> None:
+    try:
+        session.commit()
+    except IntegrityError:  # another reviewer decided this action at the same moment
+        session.rollback()
+        raise HTTPException(409, "ALREADY_DECIDED: another reviewer decided this action first")
+
+
+def _check_slot(session: Session, tenant_id: int, payload: dict, i: int) -> int:
+    """The recruiter picks one of the proposed slots at approval time: it must still be free."""
+    from backend.orchestration import scheduling  # lazy: orchestration depends on security, not the reverse
+
+    slots = payload.get("slots", [])
+    if not 0 <= i < len(slots):
+        raise HTTPException(400, f"selected_slot must be between 0 and {len(slots) - 1}")
+    if not scheduling.is_free(session, tenant_id, payload["interviewer"], slots[i]["start"], slots[i]["end"]):
+        raise HTTPException(409, "This slot is no longer free. Reject this proposal and propose new slots.")
+    return i
+
+
 def approve(session: Session, action: ProposedAction, reviewer: Principal, *, note: str = "",
             edits: dict | None = None, acknowledge_risk: bool = False) -> ProposedAction:
     if action.status != "pending":
         raise HTTPException(409, f"ALREADY_DECIDED: action is {action.status}")
     if action.risk_level == "high" and not acknowledge_risk:
         raise HTTPException(400, "HIGH_RISK: review the flags and set acknowledge_risk=true")
-    if action.type == "broadcast" and action.requested_by == reviewer.subject:
-        raise HTTPException(403, "FOUR_EYES: the requester cannot approve their own broadcast")
+    if action.requested_by == reviewer.subject and (
+            action.type in FOUR_EYES_ALWAYS or (action.type in FOUR_EYES_DECISIONS and get_settings().four_eyes_decisions)):
+        raise HTTPException(403, "FOUR_EYES: the person who requested this action cannot approve it")
     if edits:
         payload = json.loads(action.payload)
-        for k in ("subject", "body", "selected_slots"):  # the recipient can never be edited
+        for k in ("subject", "body"):  # the recipient can never be edited
             if edits.get(k) is not None:
                 payload[k] = edits[k]
+        if edits.get("selected_slot") is not None and action.type == "schedule_interview":
+            payload["selected_slot"] = _check_slot(session, action.tenant_id, payload, int(edits["selected_slot"]))
         action.payload = json.dumps(payload)
         audit.log(session, actor=reviewer.subject, event="action.edited_by_human", tenant_id=action.tenant_id,
                   target=f"action:{action.id}", commit=False)
     approval = _decide(session, action, reviewer, "approve", note)
-    session.commit()
+    _commit_decision(session)
     _execute(session, action, approval)
     audit.log(session, actor=reviewer.subject, event="action.approved", tenant_id=action.tenant_id,
               target=f"action:{action.id}", detail={"approval": str(approval.id), "result": action.result})
@@ -89,7 +118,7 @@ def reject(session: Session, action: ProposedAction, reviewer: Principal, note: 
     _decide(session, action, reviewer, "reject", note)
     action.status = "rejected"
     session.add(action)
-    session.commit()
+    _commit_decision(session)
     audit.log(session, actor=reviewer.subject, event="action.rejected", tenant_id=action.tenant_id,
               target=f"action:{action.id}", detail={"note": note[:200]})
     _resume(session, action)
@@ -111,6 +140,10 @@ def _send_email(session: Session, action: ProposedAction, to: str, subject: str,
         transport = "smtp"
     session.add(SentEmail(tenant_id=action.tenant_id, action_id=action.id, to=to, subject=subject, body=body,
                           transport=transport, message_id=message_id))
+    # Remember when we last wrote to this person: candidate follow-ups are computed from it.
+    for cand in session.exec(select(Candidate).where(Candidate.tenant_id == action.tenant_id, Candidate.email == to.lower())):
+        cand.last_contact_at = utcnow()
+        session.add(cand)
     return f"email to {to} via {transport} ({message_id})"
 
 
@@ -136,14 +169,31 @@ def _execute(session: Session, action: ProposedAction, approval: Approval) -> No
             session.add(cand)
             action.result = f"application {app.id} -> {p['decision']}"
         elif action.type == "schedule_interview":
-            slots = p.get("selected_slots") or p["slots"]
-            token = SchedulingToken(jti=secrets.token_urlsafe(32), tenant_id=action.tenant_id,
-                                    candidate_id=uuid.UUID(p["candidate_id"]), action_id=action.id,
-                                    interviewer=p["interviewer"], slots=json.dumps(slots),
-                                    expires_at=utcnow() + timedelta(hours=get_settings().scheduling_token_hours))
-            session.add(token)
-            link = f"{get_settings().public_base_url}/public/schedule/{token.jti}"
-            action.result = _send_email(session, action, p["to"], p["subject"], p["body"].replace("{link}", link))
+            from backend.orchestration import scheduling
+
+            if p.get("selected_slot") is not None:  # the recruiter picked the slot: book it now
+                slot = p["slots"][int(p["selected_slot"])]
+                when = scheduling.book(session, action.tenant_id, uuid.UUID(p["candidate_id"]), p["interviewer"], slot)
+                body = p["body"].replace(INVITE_WHEN, f"Your interview is booked for {when} with {p['interviewer']}. "
+                                                      "Reply to this email if this time does not suit you.")
+                action.result = f"interview booked {when}; " + _send_email(session, action, p["to"], p["subject"], body)
+            else:  # the candidate picks: single-use magic link
+                token = SchedulingToken(jti=secrets.token_urlsafe(32), tenant_id=action.tenant_id,
+                                        candidate_id=uuid.UUID(p["candidate_id"]), action_id=action.id,
+                                        interviewer=p["interviewer"], slots=json.dumps(p["slots"]),
+                                        expires_at=utcnow() + timedelta(hours=get_settings().scheduling_token_hours))
+                session.add(token)
+                link = f"{get_settings().public_base_url}/public/schedule/{token.jti}"
+                action.result = _send_email(session, action, p["to"], p["subject"], p["body"].replace("{link}", link))
+        elif action.type == "apply_weights":
+            job = session.get(JobOffer, uuid.UUID(p["job_id"]))
+            if not job or job.tenant_id != action.tenant_id:
+                raise ValueError("job not found")
+            crit = json.loads(job.criteria)
+            crit["weights"] = {k: int(p["weights"][k]) for k in ("required", "nice", "experience")}
+            job.criteria = json.dumps(crit)
+            session.add(job)
+            action.result = f"weights for {job.title} -> {crit['weights']}"
         elif action.type == "award_points":
             rule = session.get(PointsRule, p["action_type"])
             if not rule:

@@ -106,7 +106,8 @@ def scan(p: Principal = Depends(require("followups:manage")), session: Session =
 @router.get("/followups")
 def list_followups(p: Principal = Depends(require("followups:read")), session: Session = Depends(get_session)):
     rows = session.exec(select(Followup).where(Followup.tenant_id == p.tenant_id).order_by(Followup.due_at))
-    return [{"id": str(f.id), "kind": f.kind, "title": f.title, "status": f.status, "due_at": f.due_at,
+    return [{"id": str(f.id), "kind": f.kind, "ref_type": f.ref_type, "ref_id": f.ref_id, "title": f.title,
+             "status": f.status, "due_at": f.due_at,
              "action_id": str(f.action_id) if f.action_id else None} for f in rows]
 
 

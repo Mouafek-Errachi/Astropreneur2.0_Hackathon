@@ -86,21 +86,42 @@ def public_view(session: Session, jti: str) -> dict:
     return {"interviewer": tok.interviewer, "slots": json.loads(tok.slots)}
 
 
+def is_free(session: Session, tenant_id: int, interviewer: str, start_iso: str, end_iso: str) -> bool:
+    start = datetime.fromisoformat(start_iso).replace(tzinfo=None)
+    end = datetime.fromisoformat(end_iso).replace(tzinfo=None)
+    return not any(s < end and start < e for s, e in busy(session, tenant_id, interviewer))
+
+
+def book(session: Session, tenant_id: int, candidate_id, interviewer: str, slot: dict) -> str:
+    """Creates the calendar event and moves the candidate to the interview stage. Caller commits."""
+    if not is_free(session, tenant_id, interviewer, slot["start"], slot["end"]):
+        raise ValueError("this slot is no longer free")
+    cand = session.get(Candidate, candidate_id)
+    cand.stage = "interview"
+    start, end = _aware(slot["start"]), _aware(slot["end"])
+    session.add(CalendarEvent(tenant_id=tenant_id, interviewer=interviewer, candidate_id=cand.id,
+                              title=f"Interview: {cand.name or cand.email}", start=start, end=end))
+    session.add(cand)
+    for app in session.exec(select(Application).where(Application.candidate_id == cand.id,
+                                                      Application.status.in_(["new", "screened", "shortlisted"]))):
+        app.status = "interview"
+        session.add(app)
+    return f"{start:%A %d %B %Y, %H:%M}-{end:%H:%M}"
+
+
 def public_choose(session: Session, jti: str, slot_index: int) -> dict:
     tok = _valid_token(session, jti)
     slots = json.loads(tok.slots)
     if not 0 <= slot_index < len(slots):
         raise HTTPException(400, "Invalid slot")
     slot = slots[slot_index]
+    try:
+        when = book(session, tok.tenant_id, tok.candidate_id, tok.interviewer, slot)
+    except ValueError:
+        raise HTTPException(409, "This slot was just taken, please pick another one")
     tok.used = True  # single use
-    cand = session.get(Candidate, tok.candidate_id)
-    cand.stage = "interview"
-    session.add(CalendarEvent(tenant_id=tok.tenant_id, interviewer=tok.interviewer, candidate_id=cand.id,
-                              title=f"Interview: {cand.name or cand.email}",
-                              start=_aware(slot["start"]), end=_aware(slot["end"])))
     session.add(tok)
-    session.add(cand)
     session.commit()
-    audit.log(session, actor=f"candidate:{cand.id}", event="interview.booked", tenant_id=tok.tenant_id,
-              target=f"candidate:{cand.id}", detail=slot)
-    return {"booked": slot}
+    audit.log(session, actor=f"candidate:{tok.candidate_id}", event="interview.booked", tenant_id=tok.tenant_id,
+              target=f"candidate:{tok.candidate_id}", detail=slot)
+    return {"booked": when}

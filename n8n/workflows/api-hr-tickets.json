@@ -42,9 +42,9 @@
         "filters": {
           "conditions": [
             {
-              "keyName": "api_key",
+              "keyName": "api_key_sha256",
               "condition": "eq",
-              "keyValue": "={{ $json.headers[\"x-api-key\"] || \"missing\" }}"
+              "keyValue": "={{ String($json.headers[\"x-api-key\"] || \"missing\").hash(\"sha256\") }}"
             }
           ]
         },
@@ -65,7 +65,7 @@
       "parameters": {
         "mode": "runOnceForAllItems",
         "language": "javaScript",
-        "jsCode": "const req = $('Tickets Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key || key.active !== true || key.client !== 'employee_portal') return fail(401, 'UNAUTHORIZED', 'Missing or invalid API key for this endpoint');\nconst token = String((req.headers || {})['x-employee-token'] || '');\nif (!/^[A-Za-z0-9_-]{8,80}$/.test(token)) return fail(401, 'UNAUTHORIZED', 'Missing or invalid X-Employee-Token header');\nconst body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};\nconst errors = [];\nfor (const k of Object.keys(body)) if (!['employee_id', 'request_text'].includes(k)) errors.push('unknown field: ' + k);\nif (!/^[A-Za-z0-9_-]{1,64}$/.test(String(body.employee_id || ''))) errors.push('employee_id must be letters, digits, _ or - (max 64)');\nif (typeof body.request_text !== 'string' || body.request_text.trim().length < 10) errors.push('request_text must be at least 10 characters');\nelse if (body.request_text.length > 2000) errors.push('request_text exceeds 2000 characters');\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, token, employee_id: body.employee_id, request_text: body.request_text } }];"
+        "jsCode": "const req = $('Tickets Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key_sha256 || key.active !== true || key.client !== 'employee_portal') return fail(401, 'UNAUTHORIZED', 'Missing or invalid API key for this endpoint');\nconst token = String((req.headers || {})['x-employee-token'] || '');\nif (!/^[A-Za-z0-9_-]{8,80}$/.test(token)) return fail(401, 'UNAUTHORIZED', 'Missing or invalid X-Employee-Token header');\nconst body = (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) ? req.body : {};\nconst errors = [];\nfor (const k of Object.keys(body)) if (!['employee_id', 'request_text'].includes(k)) errors.push('unknown field: ' + k);\nif (!/^[A-Za-z0-9_-]{1,64}$/.test(String(body.employee_id || ''))) errors.push('employee_id must be letters, digits, _ or - (max 64)');\nif (typeof body.request_text !== 'string' || body.request_text.trim().length < 10) errors.push('request_text must be at least 10 characters');\nelse if (body.request_text.length > 2000) errors.push('request_text exceeds 2000 characters');\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, token, employee_id: body.employee_id, request_text: body.request_text } }];"
       }
     },
     {
@@ -120,9 +120,9 @@
         "filters": {
           "conditions": [
             {
-              "keyName": "portal_token",
+              "keyName": "portal_token_sha256",
               "condition": "eq",
-              "keyValue": "={{ $json.token }}"
+              "keyValue": "={{ String($json.token).hash(\"sha256\") }}"
             }
           ]
         },

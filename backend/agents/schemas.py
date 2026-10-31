@@ -91,3 +91,33 @@ class TicketTriage(Strict):
     suggested_response: str = Field(default="", max_length=1200)
     citations: list[str] = Field(default_factory=list, max_length=5)
     injection_attempt_observed: bool = False
+
+
+class SearchCriteria(Strict):
+    """What the recruiter asks for: read from their own words by the LLM, or set by hand."""
+
+    required_skills: list[str] = Field(default_factory=list, max_length=40)
+    nice_to_have: list[str] = Field(default_factory=list, max_length=40)
+    min_years: float = Field(default=0, ge=0, le=40)
+
+    @field_validator("required_skills", "nice_to_have")
+    @classmethod
+    def _clean_skills(cls, v: list[str]) -> list[str]:
+        out = []
+        for s in v:
+            s = " ".join(str(s).split())
+            if len(s) > 60:
+                raise ValueError("a skill name is at most 60 characters")
+            if s and s.lower() not in [o.lower() for o in out]:
+                out.append(s)
+        return out
+
+
+class AlternativeAdvice(Strict):
+    candidate_id: str = Field(max_length=64)
+    sentence: str = Field(max_length=400)
+
+
+class CompareAdvice(Strict):
+    recommendation: str = Field(max_length=600)
+    alternatives: list[AlternativeAdvice] = Field(default_factory=list, max_length=5)

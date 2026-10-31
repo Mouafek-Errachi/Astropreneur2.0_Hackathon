@@ -23,19 +23,39 @@ if "token" not in st.session_state:
             r = requests.post(f"{API_URL}/auth/login", data={"username": email, "password": password}, timeout=10)
             if r.ok:
                 st.session_state.token = r.json()["access_token"]
+                st.session_state.role = r.json()["role"]
                 st.rerun()
             else:
                 st.error("Login failed" if r.status_code == 401 else f"Login failed ({r.status_code})")
     st.stop()
 
 me = call("GET", "/auth/me")
-st.session_state.me = me
-health = call("GET", "/health")
-c1, c2, c3 = st.columns(3)
-c1.metric("Logged in as", me["role"], me["email"], delta_color="off")
-c2.metric("LLM provider", health["llm_provider"], f"fallback: {health['llm_fallback'] or '—'}", delta_color="off")
-pending = call("GET", "/approvals", params={"status": "pending"}) if "approvals:read" in me["scopes"] else []
-c3.metric("Waiting for approval", len(pending or []))
+st.session_state.me, st.session_state.role = me, me["role"]
+col1, col2 = st.columns([5, 1])
+col1.success(f"Logged in as {me['email']} ({me['role']})")
+if col2.button("Log out"):
+    st.session_state.clear()
+    st.rerun()
+health = call("GET", "/health") or {}
+if health.get("llm_provider") == "mock":
+    st.caption("AI: off (mock mode, rule-based outputs). Set LLM_PROVIDER=gemini or grok in .env to use the AI.")
+elif health.get("llm_ready"):
+    st.caption(f"AI: on ({health['llm_provider']}" + (f", fallback {health['llm_fallback']})" if health.get("llm_fallback") else ")"))
+else:
+    st.warning(f"AI: LLM_PROVIDER={health.get('llm_provider')} but its API key is empty in .env, so the simple rules are used.")
+
+if "approvals:read" in me["scopes"]:
+    st.subheader("Today")
+    digest = call("GET", "/emails/digest", params={"hours": 24}) or {}
+    pending = call("GET", "/approvals", params={"status": "pending"}) or []
+    followups = [f for f in call("GET", "/followups") or [] if f["status"] == "open"]
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Waiting for your approval", len(pending))
+    c2.metric("Emails (24h)", digest.get("total", 0))
+    c3.metric("Need a human answer", digest.get("needs_reply", 0))
+    c4.metric("Open follow-ups", len(followups))
+    if digest.get("headline"):
+        st.info(digest["headline"])
 
 if "admin" in me["scopes"]:
     st.subheader("Demo data")
@@ -48,6 +68,4 @@ if "admin" in me["scopes"]:
             st.dataframe([{k: x.get(k) for k in ("filename", "accepted", "risk_level", "hidden_text_found", "error")}
                           for x in r["resumes"]], width="stretch")
 
-if st.button("Log out"):
-    st.session_state.clear()
-    st.rerun()
+st.write("Use the pages in the sidebar: inbox, screening, approvals, scheduling, follow-ups, Ask HR, HR Ops and AI Firewall.")

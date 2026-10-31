@@ -32,6 +32,16 @@ def resume(session: Session, action: ProposedAction) -> None:
         session.commit()
 
 
+def cancel(session: Session, action: ProposedAction, reason: str, actor: str = "system") -> None:
+    """Withdraws a pending action that is no longer needed (e.g. the candidate replied). Never sends anything."""
+    if action.status != "pending":
+        return
+    action.status, action.result = "cancelled", reason[:500]
+    session.add(action)
+    audit.log(session, actor=actor, event="action.cancelled", tenant_id=action.tenant_id,
+              target=f"action:{action.id}", detail={"reason": reason}, commit=False)
+
+
 def propose(session: Session, *, tenant_id: int, type: str, title: str, payload: dict, rationale: str = "",
             input_risk: str = "none", input_flags: list[dict] | None = None, created_by_agent: str = "agent",
             requested_by: str = "", source_type: str = "", source_id: str = "") -> ProposedAction:

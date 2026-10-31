@@ -1,9 +1,15 @@
 """API request bodies. Unknown fields are rejected (extra="forbid"), as in the n8n field whitelist.
 Agent output schemas live in backend/agents/schemas.py."""
+import re
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from backend.agents.schemas import SearchCriteria
+
+# Syntax check only: EmailStr rejects reserved demo domains such as acme.test.
+EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+(\.[\w-]+)+$")
 
 
 class Strict(BaseModel):
@@ -22,20 +28,44 @@ class ApiKeyCreate(Strict):
     scopes: list[str] = Field(min_length=1)
 
 
-class JobCreate(Strict):
+class Weights(Strict):
+    """How much each criterion counts. Re-normalised over the criteria the job actually defines."""
+    required: int = Field(default=60, ge=0, le=100)
+    nice: int = Field(default=15, ge=0, le=100)
+    experience: int = Field(default=25, ge=0, le=100)
+
+
+class JobCriteria(SearchCriteria):
+    weights: Weights = Field(default_factory=Weights)
+
+
+class CriteriaText(Strict):
+    text: str = Field(min_length=3, max_length=2000)
+
+
+class JobCreate(JobCriteria):
     title: str = Field(min_length=2, max_length=150)
     description: str = Field(default="", max_length=8000)
-    required_skills: list[str] = Field(default_factory=list, max_length=40)
-    nice_to_have: list[str] = Field(default_factory=list, max_length=40)
-    min_years: float = Field(default=0, ge=0, le=40)
+
+
+class CompareRequest(Strict):
+    application_ids: list[str] = Field(min_length=2, max_length=6)
 
 
 class EmailIn(Strict):
-    sender: EmailStr
+    sender: str = Field(max_length=254)
     subject: str = Field(default="", max_length=300)
     body: str = Field(max_length=50_000)
     external_id: str = Field(default="", max_length=200)
     received_at: Optional[datetime] = None
+
+    @field_validator("sender")
+    @classmethod
+    def _valid_sender(cls, v: str) -> str:
+        v = v.strip().lower()
+        if not EMAIL_RE.match(v):
+            raise ValueError("not a valid email address")
+        return v
 
 
 class DecisionRequest(Strict):
@@ -44,7 +74,7 @@ class DecisionRequest(Strict):
 
 
 class CandidateEmailRequest(Strict):
-    kind: Literal["rejection", "acknowledgement", "reminder"]
+    kind: Literal["rejection", "acknowledgement"]
 
 
 class ChatRequest(Strict):
@@ -55,7 +85,7 @@ class ApproveRequest(Strict):
     note: str = Field(default="", max_length=1000)
     edited_subject: Optional[str] = Field(default=None, max_length=200)
     edited_body: Optional[str] = Field(default=None, max_length=8000)
-    selected_slots: Optional[list[dict]] = None
+    selected_slot: Optional[int] = Field(default=None, ge=0, le=10)  # interviews: book this slot now
     acknowledge_risk: bool = False
 
 

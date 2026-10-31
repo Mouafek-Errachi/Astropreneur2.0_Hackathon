@@ -43,7 +43,7 @@ def list_actions(status: Optional[str] = None, p: Principal = Depends(require("a
 @router.post("/{action_id}/approve")
 def approve(action_id: str, body: ApproveRequest, p: Principal = Depends(require("approvals:decide", human_only=True)),
             session: Session = Depends(get_session)):
-    edits = {"subject": body.edited_subject, "body": body.edited_body, "selected_slots": body.selected_slots}
+    edits = {"subject": body.edited_subject, "body": body.edited_body, "selected_slot": body.selected_slot}
     a = executor.approve(session, _get(session, action_id, p), p, note=body.note,
                          edits={k: v for k, v in edits.items() if v is not None}, acknowledge_risk=body.acknowledge_risk)
     return action_out(session, a)
