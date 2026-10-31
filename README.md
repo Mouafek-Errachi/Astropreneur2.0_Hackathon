@@ -119,6 +119,19 @@ docs/architecture/
 
 `POST /jobs/{id}/learn-weights` takes a CSV of past hires (`skills`, `years_experience`, `jira_done`, `performance` out of 100, optional `group`) and learns how much each criterion predicted a good outcome (success = 50% performance + 50% Jira tickets ranked among colleagues; the better half counts as good) with a ridge logistic regression (`backend/orchestration/learner.py`). Only the weights are learned, so every score is still explained the same way. Any other column is refused, at least 30 hires are needed, rows are not stored, and with a `group` column the four-fifths rule must pass or nothing is proposed. The weights go to the approval queue as `apply_weights`; someone other than the proposer approves them, then candidates are re-ranked.
 
+## Testing real email sending
+
+By default approved emails are only recorded (Approvals > Sent emails, `transport: outbox`). To send them over SMTP
+to a local catcher (nothing reaches real inboxes; the demo addresses are fictional):
+
+```bash
+.venv/Scripts/python -m aiosmtpd -n -l 127.0.0.1:1025
+```
+
+Then add `SMTP_HOST=127.0.0.1` and `SMTP_PORT=1025` to `.env`, restart `run.py`, and approve an email: it is printed in
+the catcher's terminal and shows `transport: smtp` in Sent emails. With Docker, `docker compose --profile mail` runs
+MailHog instead (web inbox on http://localhost:8025).
+
 ## Tests
 
 ```bash

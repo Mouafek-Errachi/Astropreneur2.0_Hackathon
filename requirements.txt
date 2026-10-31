@@ -28,3 +28,4 @@ pytest>=8.0
 httpx>=0.27
 faker>=26.0
 reportlab>=4.0
+aiosmtpd>=1.4  # local mail catcher for testing real SMTP sends
