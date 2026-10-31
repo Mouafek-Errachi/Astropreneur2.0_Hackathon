@@ -1,0 +1,3 @@
+{"name": "Payments API migration", "summary": "Move the payments API from the legacy monolith to a FastAPI service on Kubernetes.",
+ "team_id": "engineering", "deadline": "2027-03-31",
+ "assignments": [{"employee_id": "emp_001", "allocation_pct": 100}]}

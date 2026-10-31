@@ -28,17 +28,20 @@ limiter = Limiter(key_func=get_remote_address, enabled=settings.rate_limit_enabl
 # ------------------------------------------------------------------ scopes
 EMPLOYEE_SCOPES = {"qa:ask", "tickets:create"}
 VIEWER_SCOPES = {"jobs:read", "emails:read", "approvals:read", "followups:read", "scheduling:read",
-                 "hr:read", "qa:ask", "security:read"}
+                 "hr:read", "qa:ask", "security:read", "projects:read"}
 RECRUITER_SCOPES = VIEWER_SCOPES | {
     "jobs:write", "resumes:upload", "screening:run", "emails:ingest", "emails:process", "drafts:create",
-    "approvals:decide", "followups:manage", "scheduling:manage", "hr:write", "interview:assist",
+    "approvals:decide", "followups:manage", "scheduling:manage", "hr:write", "interview:assist", "projects:write",
 }
-ADMIN_SCOPES = RECRUITER_SCOPES | {"admin", "audit:read", "qa:admin"}
+# Managers additionally see and validate individual employee skill levels (recruiters only see team totals).
+MANAGER_SCOPES = RECRUITER_SCOPES | {"skills:read", "skills:manage"}
+ADMIN_SCOPES = MANAGER_SCOPES | {"admin", "audit:read", "qa:admin"}
 ROLE_SCOPES = {"employee": EMPLOYEE_SCOPES, "viewer": VIEWER_SCOPES, "recruiter": RECRUITER_SCOPES,
-               "admin": ADMIN_SCOPES}
+               "manager": MANAGER_SCOPES, "admin": ADMIN_SCOPES}
 
 # Scopes a machine credential (e.g. the n8n API key) can NEVER hold: a human must decide.
-HUMAN_ONLY_SCOPES = {"approvals:decide", "admin", "audit:read", "qa:admin", "tickets:create"}
+HUMAN_ONLY_SCOPES = {"approvals:decide", "admin", "audit:read", "qa:admin", "tickets:create", "skills:read",
+                     "skills:manage"}
 API_KEY_ALLOWED_SCOPES = ADMIN_SCOPES - HUMAN_ONLY_SCOPES
 
 

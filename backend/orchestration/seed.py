@@ -38,6 +38,7 @@ def seed(session: Session) -> None:
     for email, role, pw, emp in [
         ("admin@acme.test", "admin", s.demo_admin_password, None),
         ("recruiter@acme.test", "recruiter", s.demo_recruiter_password, None),
+        ("manager@acme.test", "manager", s.demo_manager_password, None),
         ("viewer@acme.test", "viewer", s.demo_viewer_password, None),
         ("yasmine.b@hr-demo.test", "employee", s.demo_employee_password, "emp_001"),
     ]:
@@ -61,6 +62,10 @@ def seed(session: Session) -> None:
                                  idempotency_key=l["idempotency_key"]))
     session.commit()
     index_policies(session, tid)
+    from backend.orchestration import staffing  # skill taxonomy + the employees' skill matrix
+
+    staffing.seed_taxonomy(session)
+    staffing.seed_employee_skills(session, tid)
 
 
 def index_policies(session: Session, tenant_id: int) -> int:
@@ -89,7 +94,7 @@ def load_demo(session: Session, tenant_id: int, actor: str, bulk: bool = False) 
     """Creates every job in data/jobs. The hand-written + attack resumes go to the first job; with bulk=True each
     data/resumes/bulk/<job file stem>/ folder goes to its own job (run scripts/generate_demo_data.py first)."""
     data = get_settings().data_dir
-    out = {"jobs": 0, "resumes": [], "emails": 0}
+    out = {"jobs": 0, "resumes": [], "emails": 0, "projects": []}
     jobs: dict[str, JobOffer] = {}
     for path in sorted((data / "jobs").glob("*.json")):
         spec = json.loads(path.read_text(encoding="utf-8"))
@@ -125,4 +130,7 @@ def load_demo(session: Session, tenant_id: int, actor: str, bulk: bool = False) 
             ingestion.ingest_email(session, tenant_id, sender=m["sender"], subject=m.get("subject", ""), body=m["body"],
                                    external_id=m.get("external_id", f"demo-{i}"), received_at=received, actor=actor)
             out["emails"] += 1
+    from backend.orchestration import staffing
+
+    out["projects"] = staffing.load_demo_projects(session, tenant_id, actor)
     return out

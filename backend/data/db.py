@@ -12,7 +12,7 @@ from backend.config import get_settings
 log = logging.getLogger(__name__)
 
 # Bump when the tables change in a way create_all() cannot apply (no migrations in the prototype).
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3  # v3: project staffing tables
 
 _settings = get_settings()
 _connect_args = {"check_same_thread": False} if _settings.database_url.startswith("sqlite") else {}

@@ -1,0 +1,21 @@
+{
+  "python":        {"synonyms": ["python3", "py"], "related": ["fastapi", "django", "spark", "airflow"], "packages": []},
+  "fastapi":       {"synonyms": [], "related": ["python", "django"], "packages": ["fastapi", "uvicorn", "starlette"]},
+  "django":        {"synonyms": [], "related": ["python", "fastapi"], "packages": ["django", "djangorestframework"]},
+  "sql":           {"synonyms": ["postgresql", "postgres", "mysql", "sqlite", "pl/sql"], "related": ["spark"], "packages": ["psycopg", "psycopg2", "psycopg2-binary", "sqlalchemy", "sqlmodel", "pg", "mysql2", "postgres"]},
+  "docker":        {"synonyms": ["containers", "dockerfile"], "related": ["kubernetes"], "packages": []},
+  "kubernetes":    {"synonyms": ["k8s", "helm"], "related": ["docker", "terraform"], "packages": ["kubernetes"]},
+  "terraform":     {"synonyms": [], "related": ["kubernetes", "aws"], "packages": []},
+  "aws":           {"synonyms": ["amazon web services"], "related": ["terraform"], "packages": ["boto3", "aws-sdk"]},
+  "redis":         {"synonyms": [], "related": [], "packages": ["redis", "ioredis"]},
+  "kafka":         {"synonyms": [], "related": ["spark"], "packages": ["kafka-python", "confluent-kafka", "kafkajs"]},
+  "javascript":    {"synonyms": ["js", "node.js", "nodejs"], "related": ["typescript", "react"], "packages": []},
+  "typescript":    {"synonyms": ["ts"], "related": ["javascript"], "packages": ["typescript"]},
+  "react":         {"synonyms": ["reactjs", "react.js"], "related": ["react native", "javascript"], "packages": ["react", "react-dom"]},
+  "react native":  {"synonyms": ["react-native"], "related": ["react", "typescript"], "packages": ["react-native", "expo"]},
+  "spark":         {"synonyms": ["pyspark", "apache spark"], "related": ["python", "sql"], "packages": ["pyspark"]},
+  "airflow":       {"synonyms": ["apache airflow"], "related": ["python"], "packages": ["apache-airflow"]},
+  "java":          {"synonyms": [], "related": [], "packages": ["spring-boot-starter-web"]},
+  "linux":         {"synonyms": [], "related": ["docker"], "packages": []},
+  "git":           {"synonyms": [], "related": [], "packages": []}
+}

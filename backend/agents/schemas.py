@@ -121,3 +121,27 @@ class AlternativeAdvice(Strict):
 class CompareAdvice(Strict):
     recommendation: str = Field(max_length=600)
     alternatives: list[AlternativeAdvice] = Field(default_factory=list, max_length=5)
+
+
+# ------------------------------------------------------------------ project staffing
+class SkillNeed(Strict):
+    skill: str = Field(max_length=60)
+    level: int = Field(default=2, ge=1, le=4)  # 1 beginner, 2 working, 3 senior, 4 expert
+    headcount: int = Field(default=1, ge=1, le=20)
+    allocation_pct: int = Field(default=100, ge=10, le=100)
+    evidence: str = Field(default="", max_length=200)
+
+
+class ProjectRequirements(Strict):
+    skills: list[SkillNeed] = Field(default_factory=list, max_length=40)
+    injection_attempt_observed: bool = False
+
+
+class JobDescriptionDraft(Strict):
+    title: str = Field(max_length=100)
+    summary: str = Field(max_length=400)
+    responsibilities: list[str] = Field(default_factory=list, max_length=8)
+    required_skills: list[str] = Field(default_factory=list, max_length=10)
+    nice_to_have: list[str] = Field(default_factory=list, max_length=10)
+    min_years: float = Field(default=0, ge=0, le=20)
+    body: str = Field(max_length=4000)

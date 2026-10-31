@@ -279,6 +279,99 @@ class PointsLedger(SQLModel, table=True):
     idempotency_key: str = Field(unique=True)
 
 
+# ------------------------------------------------------------------ project staffing & skill gaps
+class Skill(SQLModel, table=True):
+    """Shared skill taxonomy: canonical name, synonyms and related skills (data/skills/taxonomy.json)."""
+
+    name: str = Field(primary_key=True)  # canonical, lowercase
+    synonyms: str = "[]"
+    related: str = "[]"
+    packages: str = "[]"  # dependency names in manifests that imply this skill
+
+
+class EmployeeSkill(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    employee_id: str = Field(foreign_key="employee.id", index=True)
+    skill: str = Field(index=True)
+    level: int = 2  # 1 beginner, 2 working, 3 senior, 4 expert
+    source: str = "self"  # self | manager
+    validated: bool = False  # only manager-validated skills count as coverage
+    validated_by: str = ""
+    last_confirmed: datetime = Field(default_factory=utcnow)
+
+
+class Project(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    name: str
+    summary: str = ""
+    team_id: Optional[str] = Field(default=None, foreign_key="team.id")
+    deadline: str = ""
+    requirements_version: int = 0
+    requirements_confirmed: bool = False
+    confirmed_by: str = ""
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime = Field(default_factory=utcnow)
+
+
+class ProjectDocument(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    kind: str  # charter | manifest
+    original_filename: str
+    stored_filename: str = ""
+    sha256: str = ""
+    text: str = ""  # sanitized visible text (never executed)
+    hidden_text: str = ""
+    flags: str = "[]"
+    risk_level: str = "none"
+    embedding: str = "[]"
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class ProjectSkillRequirement(SQLModel, table=True):
+    """Versioned: every analysis or human edit writes a new version; the project points at the current one."""
+
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    version: int = Field(index=True)
+    skill: str
+    level: int = 2
+    headcount: int = 1
+    allocation_pct: int = 100
+    evidence: str = ""
+    source: str = "llm"  # llm | manifest | human
+
+
+class ProjectAssignment(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    employee_id: str = Field(foreign_key="employee.id", index=True)
+    allocation_pct: int = 100
+
+
+class SkillGap(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    project_id: uuid.UUID = Field(foreign_key="project.id", index=True)
+    skill: str
+    level: int
+    needed_fte: float
+    covered_fte: float
+    gap_fte: float
+    kind: str  # missing | insufficient_level | insufficient_capacity
+    internal_options: str = "[]"  # [{employee_id, reason, level}]
+    decision: str = "open"  # open | internal | hire_externally
+    decided_by: str = ""
+    status: str = "open"  # open | jd_proposed | hiring | closed
+    action_id: Optional[uuid.UUID] = None
+    job_offer_id: Optional[uuid.UUID] = None
+
+
 # ------------------------------------------------------------------ L5 observability
 class SecurityEvent(SQLModel, table=True):
     """Feed for the AI Firewall visualizer."""

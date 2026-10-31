@@ -11,6 +11,7 @@ st.caption("The agent executes, the human decides. Nothing is sent or recorded w
 DEMO_USERS = {
     "recruiter@acme.test": "Recruiter — screens, drafts, approves",
     "admin@acme.test": "Admin — everything + audit, API keys, demo data",
+    "manager@acme.test": "Manager — recruiter + sees and validates employee skills",
     "viewer@acme.test": "Viewer — read only",
     "yasmine.b@hr-demo.test": "Employee — asks HR, opens tickets",
 }

@@ -1,0 +1,5 @@
+{
+  "name": "customer-app",
+  "dependencies": {"react": "18.3.1", "react-native": "0.75.2", "expo": "51.0.0"},
+  "devDependencies": {"typescript": "5.5.4"}
+}

@@ -27,7 +27,7 @@ from backend.security import audit
 from backend.security.gateway import Principal
 from backend.security.validator import check_outgoing_text
 
-FOUR_EYES_ALWAYS = {"broadcast"}  # a team-wide email always needs a second person
+FOUR_EYES_ALWAYS = {"broadcast", "create_job_offer"}  # team-wide email; opening a position
 FOUR_EYES_DECISIONS = {"record_decision", "apply_weights"}  # decisions about people and how they are scored
 
 
@@ -194,6 +194,17 @@ def _execute(session: Session, action: ProposedAction, approval: Approval) -> No
             job.criteria = json.dumps(crit)
             session.add(job)
             action.result = f"weights for {job.title} -> {crit['weights']}"
+        elif action.type == "create_job_offer":
+            from backend.data import vectors
+
+            crit = {"required_skills": [s.lower() for s in p["criteria"]["required_skills"]],
+                    "nice_to_have": [s.lower() for s in p["criteria"]["nice_to_have"]],
+                    "min_years": float(p["criteria"]["min_years"]), "weights": {"required": 60, "nice": 15, "experience": 25}}
+            job = JobOffer(tenant_id=action.tenant_id, title=p["title"], description=p["body"], criteria=json.dumps(crit),
+                           embedding=vectors.dumps(vectors.embed(f"{p['title']} {p['body']}")))
+            session.add(job)
+            session.flush()
+            action.result = f"job offer created: {job.title} (job_offer_id={job.id})"  # read by the staffing hook
         elif action.type == "award_points":
             rule = session.get(PointsRule, p["action_type"])
             if not rule:

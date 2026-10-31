@@ -6,7 +6,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from backend.agents.schemas import SearchCriteria
+from backend.agents.schemas import SearchCriteria, SkillNeed
 
 # Syntax check only: EmailStr rejects reserved demo domains such as acme.test.
 EMAIL_RE = re.compile(r"^[\w.+-]+@[\w-]+(\.[\w-]+)+$")
@@ -130,3 +130,29 @@ class InterviewAssistRequest(Strict):
     resume_summary: str = Field(default="", max_length=2000)
     previous_chunk: str = Field(default="", max_length=4000)
     current_chunk: str = Field(min_length=5, max_length=4000)
+
+
+# ---------------------------------------------------------------- project staffing
+class ProjectCreate(Strict):
+    name: str = Field(min_length=2, max_length=150)
+    summary: str = Field(default="", max_length=2000)
+    team_id: Optional[str] = Field(default=None, pattern=r"^[a-z_]{2,40}$")
+    deadline: str = Field(default="", max_length=20)
+
+
+class RequirementsIn(Strict):
+    skills: list[SkillNeed] = Field(max_length=40)
+
+
+class GapDecision(Strict):
+    decision: Literal["open", "internal", "hire_externally"]
+
+
+class EmployeeSkillIn(Strict):
+    skill: str = Field(min_length=1, max_length=60)
+    level: int = Field(ge=1, le=4)
+    validated: bool = True  # only honoured for managers
+
+
+class EmployeeSkillsIn(Strict):
+    skills: list[EmployeeSkillIn] = Field(min_length=1, max_length=40)

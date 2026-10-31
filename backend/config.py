@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     demo_recruiter_password: str = "Recruiter#2026!"
     demo_viewer_password: str = "Viewer#2026!"
     demo_employee_password: str = "Employee#2026!"
+    demo_manager_password: str = "Manager#2026!"
     enable_demo_data: bool = True  # admin-only demo-data loader (turn off outside demos)
 
     # L3 agents: LLM provider = mock | gemini | grok, with an optional fallback provider

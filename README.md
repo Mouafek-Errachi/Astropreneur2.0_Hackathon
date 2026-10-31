@@ -24,6 +24,7 @@ cp .env.example .env
 |---|---|
 | `admin@acme.test` | Everything, plus audit log, API keys and demo data |
 | `recruiter@acme.test` | Screens, drafts and approves |
+| `manager@acme.test` | Recruiter, plus sees and validates individual employee skills |
 | `viewer@acme.test` | Read only |
 | `yasmine.b@hr-demo.test` | Employee: asks HR, opens tickets |
 
@@ -40,6 +41,7 @@ Passwords are in `.env.example`. Log in as admin, tick "bulk" and click **Load d
 | Interview scheduling | Free slots from the interviewer calendar. At approval, either book a slot now, or send the candidate a single-use link to pick one. A booked slot is never offered twice. | Scheduling and Approvals pages, `/public/schedule/{token}` |
 | Employee questions | Answers from policy documents only, with sources; anything else is escalated. Employees can open tickets; the drafted reply waits for HR. | Ask HR page, `/qa/ask`, `/hr/tickets` |
 | HR operations | Interview co-pilot (probing questions when an answer is vague), team broadcasts with a fact check, recognition points and leaderboard. | HR Ops page; the n8n versions on "HR Ops via n8n" |
+| Project staffing & skill gaps | Upload a project charter and dependency manifests; the AI extracts the skills the project needs (a person confirms them); the gaps against the team's validated skills and free capacity are computed in code (missing, level too low, not enough capacity); internal options (upskill, rebalance, validate a declared skill, related skill) come first; for a gap marked "hire externally" the AI drafts a job description (checked for invented pay, links, exclusionary wording, employee names), and a second person approves it into a job that screening can rank against. Spec: [docs/specs/project-staffing-gap-analysis.md](docs/specs/project-staffing-gap-analysis.md) | Project Staffing page, `/projects`, `/skills/matrix`, `/employees/{id}/skills` |
 | Security visibility | Every blocked file, injection, hidden text and quarantine in one place, plus the hash-chained audit log. | AI Firewall page |
 
 ## Demo walkthrough (5 minutes)
@@ -50,7 +52,8 @@ Passwords are in `.env.example`. Log in as admin, tick "bulk" and click **Load d
 4. **Candidate email:** draft the rejection, edit it in the approval queue, approve: it appears in "Sent emails".
 5. **Inbox:** classify, show the digest by urgency, and the phishing and injection emails quarantined (AI Firewall lights up).
 6. **Scheduling:** propose slots, approve with "let the candidate choose", open the link from the sent email, pick a slot; the link then stops working.
-7. **Ask HR:** "How many days can I work remotely?" (answered with a source), then a question outside the policies (escalated).
+7. **Project staffing:** open "Payments API migration", review the AI's draft requirements and confirm them: gaps appear (Python short on capacity, PostgreSQL level too low, Kubernetes missing). Mark Kubernetes "hire externally", draft the job description, and approve it as the manager: a new job appears on Screening. Show the mobile-app charter flagged for its planted injection, with gaps unchanged.
+8. **Ask HR:** "How many days can I work remotely?" (answered with a source), then a question outside the policies (escalated).
 
 ## Architecture
 
@@ -67,13 +70,14 @@ Five layers (diagrams in [docs/architecture/](docs/architecture/)):
 ```
 backend/
   main.py  config.py  schemas.py
-  api/            routes: auth, recruiting, inbox, approvals, scheduling, hr, security
-  orchestration/  workflow (propose/resume/cancel), ingestion, screening, learner, inbox, scheduling, followups, hr_ops, seed
+  api/            routes: auth, recruiting, inbox, approvals, scheduling, hr, security, staffing
+  orchestration/  workflow (propose/resume/cancel), ingestion, screening, learner, inbox, scheduling, followups, hr_ops,
+                  staffing, seed
   agents/         llm (Gemini pool | Grok | mock), schemas, classifier, ranker, brief, compare, drafter, policy_rag,
-                  bias_auditor, candidate_chat, hr_ops
+                  bias_auditor, candidate_chat, hr_ops, project_analyzer, jd_writer
   data/           models, db, storage, vectors
   security/       gateway, guard/ (files, sanitizer, injection), validator, executor, audit, events
-  tests/          83 tests: security, guard, human in the loop, pipeline, screening rules, brief, compare, learner, LLM
+  tests/          91 tests: staffing, security, guard, human in the loop, pipeline, screening rules, brief, compare, learner, LLM
 dashboard/        app.py + pages/
 data/             5 jobs, resumes (100 generated + attacks), emails, policies, calendar, past hires (learner sample)
 n8n/              n8n workflows + seed tables (shared with FastAPI) + Postman tests
@@ -98,6 +102,8 @@ docs/architecture/
 | `data/policies/` | Expenses, training, onboarding, overtime, travel (leave, payroll, remote work, benefits and conduct come from `n8n/data`) |
 | `data/calendar.json` | Busy blocks for 4 interviewers over the next 2 weeks |
 | `data/employees/backend_engineer_hires.csv` | Past hires to try the weight learner |
+| `data/projects/` | 3 projects (payments migration, mobile app, data platform) with charters and manifests; the mobile charter has a planted injection |
+| `data/employees/employee_skills.csv`, `data/skills/taxonomy.json` | Skill matrix of the 12 employees (validated and self-declared) and the skill taxonomy (synonyms, related skills, package names) |
 | `n8n/data/` | 12 employees, 4 teams, points rules and ledger, policy sections |
 
 ## Security design
