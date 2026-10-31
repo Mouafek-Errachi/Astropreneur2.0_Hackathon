@@ -58,6 +58,59 @@ def test_recipient_must_appear_in_resume():
     assert verified_email("attacker@evil.test", "Contact: alice@example.com") == ""
 
 
+def test_weights_only_count_defined_criteria():
+    profile = CandidateProfile(name="X", skills=["Python"], years_experience=10)
+    assert score(profile, ["python"], [], 0)["total"] == 100.0  # experience and nice-to-have not defined
+    only_exp = score(profile, ["go"], [], 5, {"required": 0, "nice": 0, "experience": 100})
+    assert only_exp["total"] == 100.0 and only_exp["weights"] == {"experience": 100}
+    assert score(profile, [], [], 0)["total"] == 0.0
+
+
+def test_mock_parser_reads_the_skills_line():
+    from backend.features.screening.parser import parse_resume
+    profile, _ = parse_resume("Zoe Kim\nSkills: Rust, Terraform; Kafka\n4 years of experience")
+    assert {"Rust", "Terraform", "Kafka"} <= set(profile.skills) and profile.years_experience == 4
+
+
+def test_criteria_change_reranks_without_llm(client, recruiter):
+    job = _job(client, recruiter, "Criteria Job")
+    files = [("files", (p.name, p.read_bytes())) for p in sorted((DATA / "resumes").glob("*.txt"))]
+    client.post(f"/jobs/{job['id']}/resumes", files=files, headers=recruiter)
+    first = client.post(f"/jobs/{job['id']}/screen", headers=recruiter).json()
+    assert first[0]["name"] == "Alice Martin"
+
+    frontend = {"required_skills": ["JavaScript", "React", "react "], "nice_to_have": [], "min_years": 0,
+                "weights": {"required": 100, "nice": 0, "experience": 0}}
+    ranked = client.put(f"/jobs/{job['id']}/criteria", json=frontend, headers=recruiter).json()
+    assert ranked[0]["name"] == "Bob Nguyen" and ranked[0]["score"] == 100.0
+    assert ranked[0]["justification"].startswith("Has 2/2 required skills")
+    saved = next(j for j in client.get("/jobs", headers=recruiter).json() if j["id"] == job["id"])
+    assert saved["required_skills"] == ["JavaScript", "React"] and saved["weights"]["required"] == 100
+
+    reread = client.put(f"/jobs/{job['id']}/criteria", params={"reparse": "true"}, json=frontend, headers=recruiter).json()
+    assert [c["id"] for c in reread] == [c["id"] for c in ranked]
+    bad = {**frontend, "weights": {"required": 150, "nice": 0, "experience": 0}}
+    assert client.put(f"/jobs/{job['id']}/criteria", json=bad, headers=recruiter).status_code == 422
+
+
+def test_viewer_cannot_change_criteria(client, viewer, recruiter):
+    job = _job(client, recruiter, "Viewer Job")
+    assert client.put(f"/jobs/{job['id']}/criteria", json={"required_skills": ["x"]}, headers=viewer).status_code == 403
+
+
+def test_add_missing_columns_migrates_an_old_database(tmp_path):
+    from sqlalchemy import create_engine, inspect, text
+
+    from backend.db import add_missing_columns
+    old = create_engine(f"sqlite:///{(tmp_path / 'old.db').as_posix()}")
+    with old.begin() as conn:  # the job table as it was before `weights` existed
+        conn.execute(text("CREATE TABLE job (id INTEGER PRIMARY KEY, tenant_id INTEGER, title VARCHAR, description "
+                          "VARCHAR, required_skills VARCHAR, nice_to_have VARCHAR, min_years FLOAT, created_at DATETIME)"))
+    assert add_missing_columns(old) == ["job.weights"]
+    assert "weights" in {c["name"] for c in inspect(old).get_columns("job")}
+    assert add_missing_columns(old) == []
+
+
 def test_duplicate_resume_rejected(client, recruiter):
     job = _job(client, recruiter, "Dup Job")
     text = (DATA / "resumes/bob_nguyen.txt").read_bytes()

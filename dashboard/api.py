@@ -10,12 +10,12 @@ N8N_URL = os.getenv("N8N_BASE_URL", "").rstrip("/")
 N8N_KEYS = {"hr": "N8N_HR_KEY", "hr_admin": "N8N_HR_ADMIN_KEY", "portal": "N8N_PORTAL_KEY", "extension": "N8N_EXTENSION_KEY"}
 
 
-def call(method: str, path: str, **kwargs):
+def call(method: str, path: str, timeout: int = 300, **kwargs):
     headers = kwargs.pop("headers", {})
     if token := st.session_state.get("token"):
         headers["Authorization"] = f"Bearer {token}"
     try:
-        r = requests.request(method, f"{API_URL}{path}", headers=headers, timeout=300, **kwargs)
+        r = requests.request(method, f"{API_URL}{path}", headers=headers, timeout=timeout, **kwargs)
     except requests.RequestException as e:
         st.error(f"Backend unreachable: {e}")
         st.stop()

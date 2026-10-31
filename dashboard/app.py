@@ -25,6 +25,14 @@ me = call("GET", "/auth/me")
 st.session_state.role = me["role"]
 col1, col2 = st.columns([5, 1])
 col1.success(f"Logged in as {me['email']} ({me['role']})")
+health = call("GET", "/health") or {}
+if health.get("llm_ready"):
+    st.caption(f"AI: on ({health.get('llm_provider')})")
+elif health.get("llm_mode") == "live":
+    st.warning(f"AI: LLM_MODE=live but the {health.get('llm_provider', '').upper()}_API_KEY is empty in .env, "
+               "so the simple rules are used.")
+else:
+    st.caption("AI: off (mock mode, rule-based outputs). Set LLM_MODE=live in .env to use the AI.")
 if col2.button("Log out"):
     st.session_state.clear()
     st.rerun()

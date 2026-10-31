@@ -10,7 +10,9 @@ from backend.config import get_settings
 from backend.core import audit
 from backend.core.security import Principal
 from backend.features.scheduling.calendar import is_free
-from backend.models import Action, CalendarEvent, Candidate, Email, Followup, OutboxMessage, as_utc, utcnow
+from backend.features.screening.intake import rescore
+from backend.models import Action, CalendarEvent, Candidate, Email, Followup, Job, OutboxMessage, as_utc, utcnow
+from backend.schemas import Weights
 
 
 def propose(session: Session, *, tenant_id: int, type: str, title: str, payload: dict,
@@ -33,9 +35,9 @@ def approve(session: Session, action: Action, principal: Principal, note: str = 
         raise HTTPException(409, f"Action already {action.status}")
     if action.risk_level == "high" and not acknowledge_risk:
         raise HTTPException(400, "High-risk action: set acknowledge_risk=true")
-    if (get_settings().four_eyes_decisions and action.type == "record_decision"
+    if (get_settings().four_eyes_decisions and action.type in ("record_decision", "apply_weights")
             and action.created_by == principal.subject):
-        raise HTTPException(403, "Four-eyes rule: a decision about a candidate must be approved by someone else")
+        raise HTTPException(403, "Four-eyes rule: a decision about candidates must be approved by someone else")
     if action.type == "schedule_interview":
         _pick_slot(session, action, selected_slot)
     action.status, action.decided_by, action.decided_at, action.decision_note = "approved", principal.subject, utcnow(), note
@@ -112,6 +114,14 @@ def _execute(session: Session, action: Action) -> None:
         if cand and cand.tenant_id == action.tenant_id and cand.status in ("new", "screened", "shortlisted"):
             cand.status = "interview"
             session.add(cand)
+    elif action.type == "apply_weights":
+        job = session.get(Job, payload["job_id"])
+        if not job or job.tenant_id != action.tenant_id:
+            raise HTTPException(404, "Job not found")
+        job.weights = Weights(**payload["weights"]).model_dump_json()
+        session.add(job)
+        rescore(session, action.tenant_id, job)
+        action.result = f"job {job.id} weights -> {payload['weights']}; candidates re-ranked"
     else:
         raise HTTPException(400, f"Unknown action type: {action.type}")
     action.status, action.executed_at = "executed", utcnow()

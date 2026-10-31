@@ -59,7 +59,7 @@ app.add_middleware(SlowAPIMiddleware)  # applies DEFAULT_RATE_LIMIT to every rou
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key"],
 )
 
@@ -80,7 +80,9 @@ async def security_headers(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "llm_mode": settings.llm_mode}
+    live = settings.llm_mode == "live"
+    return {"status": "ok", "llm_mode": settings.llm_mode, "llm_provider": settings.llm_provider if live else None,
+            "llm_ready": live and bool(getattr(settings, f"{settings.llm_provider}_api_key", ""))}
 
 
 for r in (auth_router, screening_router, email_router, replies_router, approvals_router,

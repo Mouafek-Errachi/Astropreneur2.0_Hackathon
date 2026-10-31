@@ -29,9 +29,15 @@ class Settings(BaseSettings):
 
     # LLM
     llm_mode: str = "mock"  # mock | live
+    llm_provider: str = "anthropic"  # anthropic | gemini
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-opus-5-5"
     llm_effort: str = "low"
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.5-flash-lite"  # fast and accurate enough for extraction and drafting
+    # Used in turn when a model is rate-limited or overloaded. Free-tier quotas are per model, so a pool adds up.
+    gemini_fallback_models: str = "gemini-3.1-flash-lite,gemini-2.5-flash,gemini-3.6-flash"
+    gemini_wait_budget_s: int = 120  # longest one call waits for a free model before using the rule-based fallback
     llm_max_retries: int = 2
     llm_concurrency: int = 6
 
@@ -58,7 +64,7 @@ class Settings(BaseSettings):
     allowed_link_domains: str = "acme.test,careers.acme.test"
 
     # Human-in-the-loop rules
-    four_eyes_decisions: bool = True  # whoever proposes a decision about a candidate cannot approve it
+    four_eyes_decisions: bool = True  # whoever proposes a candidate decision or learned weights cannot approve it
     reminder_after_days: int = 3  # candidate follow-up when we wrote and they have not answered
     unanswered_email_hours: int = 48
 

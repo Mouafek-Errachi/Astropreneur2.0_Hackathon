@@ -54,6 +54,16 @@ EmailCategory = Literal[
 ]
 
 
+class AlternativeAdvice(Strict):
+    candidate_id: int
+    sentence: str = Field(max_length=400)
+
+
+class CompareAdvice(Strict):
+    recommendation: str = Field(max_length=600)
+    alternatives: list[AlternativeAdvice] = Field(default_factory=list, max_length=5)
+
+
 class EmailClassification(Strict):
     category: EmailCategory
     priority: Literal["high", "medium", "low"]
@@ -76,6 +86,25 @@ class QAAnswer(Strict):
     cited_sources: list[str] = Field(default_factory=list, max_length=6)
     confidence: Literal["high", "medium", "low"]
     escalate_to_hr: bool
+
+
+class SearchCriteria(Strict):
+    """What the recruiter asks for: read from their own words by the LLM, or set by hand."""
+    required_skills: list[str] = Field(default_factory=list, max_length=40)
+    nice_to_have: list[str] = Field(default_factory=list, max_length=40)
+    min_years: float = Field(default=0, ge=0, le=40)
+
+    @field_validator("required_skills", "nice_to_have")
+    @classmethod
+    def _clean_skills(cls, v: list[str]) -> list[str]:
+        out = []
+        for s in v:
+            s = " ".join(str(s).split())
+            if len(s) > 60:
+                raise ValueError("a skill name is at most 60 characters")
+            if s and s.lower() not in [o.lower() for o in out]:
+                out.append(s)
+        return out
 
 
 # ---------------------------------------------------------------- API
@@ -111,12 +140,29 @@ class ApiKeyOut(BaseModel):
     key: Optional[str] = None  # only returned once, at creation
 
 
-class JobCreate(Strict):
+class Weights(Strict):
+    """How much each criterion counts. Re-normalised over the criteria the job actually defines."""
+    required: int = Field(default=60, ge=0, le=100)
+    nice: int = Field(default=15, ge=0, le=100)
+    experience: int = Field(default=25, ge=0, le=100)
+
+
+class JobCriteria(SearchCriteria):
+    weights: Weights = Field(default_factory=Weights)
+
+
+class CriteriaText(Strict):
+    text: str = Field(min_length=3, max_length=2000)
+
+
+class CriteriaFromText(BaseModel):
+    criteria: SearchCriteria
+    llm_fallback: bool
+
+
+class JobCreate(JobCriteria):
     title: str = Field(min_length=2, max_length=150)
     description: str = Field(default="", max_length=8000)
-    required_skills: list[str] = Field(default_factory=list, max_length=40)
-    nice_to_have: list[str] = Field(default_factory=list, max_length=40)
-    min_years: float = Field(default=0, ge=0, le=40)
 
 
 class JobOut(BaseModel):
@@ -126,6 +172,7 @@ class JobOut(BaseModel):
     required_skills: list[str]
     nice_to_have: list[str]
     min_years: float
+    weights: dict
     candidate_count: int = 0
 
 
@@ -190,6 +237,10 @@ class EmailOut(BaseModel):
 
 class CandidateDraftRequest(Strict):
     kind: Literal["rejection", "invitation", "acknowledgement"]
+
+
+class CompareRequest(Strict):
+    candidate_ids: list[int] = Field(min_length=2, max_length=6)
 
 
 class DecisionRequest(Strict):

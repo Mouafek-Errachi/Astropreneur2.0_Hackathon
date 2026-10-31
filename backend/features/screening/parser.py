@@ -19,9 +19,18 @@ TASK = (
 )
 
 
+def term_re(term: str) -> re.Pattern:
+    """Whole-word pattern for a lowercase text: 'java' does not match 'javascript', 'c++' matches 'c++ 17'."""
+    return re.compile(rf"(?<![\w+#]){re.escape(term.lower())}(?![\w+#])")
+
+
 def has_term(text: str, term: str) -> bool:
-    """Whole-word match: 'java' does not match 'javascript', 'c++' matches 'C++ 17'."""
-    return re.search(rf"(?<![\w+#]){re.escape(term.lower())}(?![\w+#])", text.lower()) is not None
+    return term_re(term).search(text.lower()) is not None
+
+
+def _skills_line(text: str) -> list[str]:
+    m = re.search(r"^\s*(?:technical\s+)?skills?\s*:\s*(.+)$", text, re.I | re.M)
+    return [s.strip() for s in re.split(r"[,;|•]", m.group(1)) if s.strip()] if m else []
 
 
 def _mock(text: str, job_skills: list[str]) -> dict:
@@ -33,7 +42,7 @@ def _mock(text: str, job_skills: list[str]) -> dict:
         "name": first_line[:120],
         "email": email.group(0) if email else "",
         "years_experience": float(years.group(1)) if years else 0,
-        "skills": [s for s in vocab if has_term(text, s)],
+        "skills": _skills_line(text) + [s for s in vocab if has_term(text, s)],
         "summary": text[:300],
     }
 

@@ -8,7 +8,7 @@ Hackathon prototype (ASTROPRENEUR 2.0): AI agents that take over daily HR tasks 
 
 | Brief | What we built | Where |
 |---|---|---|
-| Resume screening & ranking | Ranked shortlist per job. Each candidate gets a one-line justification built from job criteria only (required skills, nice-to-have, years of experience). | Screening page, `POST /jobs/{id}/screen` |
+| Resume screening & ranking | The Screening page opens on the ranked table of CVs for a job. You say who you are looking for in your own words ("Python and SQL, Linux is a plus, 3 years minimum", any language); the AI turns it into criteria (required skills, nice-to-have, minimum years), shows what it understood, and the table re-ranks instantly, without re-reading the CVs. Anything about the person (age, gender, origin) is left out. The criteria and how much each counts can also be edited by hand. Each candidate gets a one-line justification built from those criteria only. Tick two or more candidates and click Compare to see them side by side (each criterion ✅/❌, experience, title, education, other skills); 🔎 shows a candidate's full JSON record, downloadable. | Screening page, `POST /jobs/{id}/screen`, `POST /jobs/{id}/criteria/from-text`, `PUT /jobs/{id}/criteria` |
 | Email summary | Inbox digest for the last 24h (or 48h, 72h, a week), grouped by type and urgency, with the emails that need a human answer and the suspicious ones. | Inbox page, `GET /emails/digest?hours=24` |
 | Automatic replies | Drafts for inbox emails, and for candidates (acknowledgement, invitation, rejection) written from the candidate's own file only. Rejection and invitation emails need an approved decision first. | Inbox and Screening pages |
 | Candidate follow-ups | Reminder drafts for candidates who have not answered our last message after `REMINDER_AFTER_DAYS`, and follow-ups for inbox emails left unanswered. A reminder is withdrawn automatically if the candidate writes back. | Follow-ups page, `POST /followups/scan` |
@@ -20,7 +20,7 @@ Hackathon prototype (ASTROPRENEUR 2.0): AI agents that take over daily HR tasks 
 
 - **Backend:** FastAPI, SQLModel (SQLite by default), Pydantic
 - **Dashboard:** Streamlit, a thin client that only calls the APIs
-- **LLM:** `anthropic` SDK behind one wrapper (`backend/core/llm.py`). `LLM_MODE=mock` runs everything without an API key; use `LLM_MODE=live` for the demo. Bulk screening and classification run `LLM_CONCURRENCY` calls in parallel.
+- **LLM:** Gemini (`google-genai`) or Claude (`anthropic`) behind one wrapper (`backend/core/llm.py`), chosen with `LLM_PROVIDER=gemini|anthropic` and the matching `GEMINI_API_KEY` or `ANTHROPIC_API_KEY`. Both get the same system prompt, the same `<untrusted_document>` fencing and a JSON schema, and every answer is re-validated with Pydantic. `LLM_MODE=mock` runs everything without an API key; use `LLM_MODE=live` for the demo. Bulk screening and classification run `LLM_CONCURRENCY` calls in parallel, and Gemini rate limits (429) are retried with backoff.
 - **Security:** JWT and bcrypt for users, hashed API keys for integrations, role scopes, tenant scoping, slowapi rate limits, magic-byte file checks, a prompt-injection scanner, and a hash-chained audit log
 
 ## Quick start (local)
@@ -54,7 +54,7 @@ Demo users (passwords are in `.env.example`): `admin@acme.test`, `recruiter@acme
 
 ## Demo walkthrough (5 minutes)
 
-1. **Screening:** run screening on Backend Engineer. Show the ranking with its justifications, and the resumes with planted injections flagged ⚠️ for review (their text did not move their score).
+1. **Screening:** open Backend Engineer and type "I am looking for people with Python and SQL, Linux is a plus, at least 3 years of experience". Show what the AI understood, the re-ranked table with its justifications, and the resumes with planted injections flagged ⚠️ for review (their text did not move their score).
 2. **Four-eyes:** as the recruiter, propose "rejected" for a candidate and try to approve it yourself (refused). Log in as admin and approve it.
 3. **Candidate email:** draft a rejection for that candidate, edit it in the approval queue, approve. It appears in the outbox.
 4. **Inbox:** classify, show the 24h digest by type and urgency, and the phishing and injection emails flagged.
@@ -102,6 +102,17 @@ The `n8n/` folder holds the extra features as n8n workflows calling Gemini. The 
 | System security | Uploads are quarantined, then stored under UUID names in a non-public directory. File types are checked by magic bytes. Size, page, batch and request-size limits are enforced; at most the size limit is read into memory. Duplicate resumes are rejected. |
 | Web security | JWT auth, RBAC scopes, tenant-scoped queries (404 on cross-tenant access), rate limits on every route (stricter on login), restricted CORS, and security headers. Outside `ENVIRONMENT=dev` the API refuses to start with a default `JWT_SECRET`. |
 | Audit | Hash-chained, append-only log of logins, uploads, screenings, proposals, approvals, rejections and withdrawals. |
+
+## Learned scoring weights
+
+`POST /jobs/{id}/learn-weights` takes a CSV of past hires (`skills`, `years_experience`, `jira_done`, `performance` out of 100, optional `group`) and learns how much each criterion (required skills, nice-to-have, experience) predicted a good outcome. The outcome is computed: success = 50% performance + 50% Jira tickets done (ranked among the colleagues in the file), and the better half counts as good. It uses a ridge logistic regression (`backend/features/screening/learner.py`). Only the weights are learned, so every score is still explained the same way. Safeguards:
+
+- Any other column (name, age, gender...) is refused, and the rows are not stored.
+- At least 30 hires.
+- Bias check: with a `group` column, selection rates per group must pass the four-fifths rule, or nothing is proposed. Without it, the proposal is high-risk and the approver must acknowledge it.
+- The weights go to the approval queue as `apply_weights`; someone other than the proposer approves them, then candidates are re-ranked.
+
+Try it with `data/employees/backend_engineer_hires.csv` (fictional) on the demo Backend Engineer job.
 
 ## Roadmap / TODO
 

@@ -49,6 +49,7 @@ class Job(SQLModel, table=True):
     required_skills: str = "[]"  # JSON list
     nice_to_have: str = "[]"  # JSON list
     min_years: float = 0
+    weights: Optional[str] = None  # JSON {"required", "nice", "experience"}; None = default weights
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -98,7 +99,7 @@ class Action(SQLModel, table=True):
 
     id: Optional[int] = Field(default=None, primary_key=True)
     tenant_id: int = Field(foreign_key="tenant.id", index=True)
-    type: str  # send_email | record_decision | schedule_interview | send_reminder
+    type: str  # send_email | record_decision | schedule_interview | send_reminder | apply_weights
     status: str = Field(default="pending", index=True)  # pending | approved | rejected | executed | failed
     payload: str = "{}"  # JSON
     title: str = ""

@@ -13,7 +13,7 @@ from backend.features.screening.parser import parse_resume
 from backend.features.screening.ranking import rank
 from backend.features.screening.scorer import score
 from backend.models import Candidate, Job
-from backend.schemas import EMAIL_RE, UploadResult
+from backend.schemas import EMAIL_RE, CandidateProfile, UploadResult
 
 
 
@@ -51,20 +51,45 @@ def verified_email(email: str, text: str) -> str:
     return email if EMAIL_RE.match(email) and email in text.lower() else ""
 
 
-def screen_candidates(session: Session, tenant_id: int, job: Job) -> list[Candidate]:
-    req, nice = json.loads(job.required_skills), json.loads(job.nice_to_have)
-    cands = list(session.exec(select(Candidate).where(Candidate.job_id == job.id, Candidate.tenant_id == tenant_id)).all())
-    todo = [c for c in cands if c.score is None]
-    # LLM calls run in parallel (LLM_CONCURRENCY); the DB is only touched from this thread.
-    with ThreadPoolExecutor(max_workers=max(1, get_settings().llm_concurrency)) as pool:
-        parsed = list(pool.map(lambda c: parse_resume(c.text, req + nice), todo))
-    for c, (profile, fallback) in zip(todo, parsed):
-        breakdown = score(profile, req, nice, job.min_years)
-        c.name, c.email = profile.name, verified_email(profile.email, c.text)
-        c.profile_json, c.score_json, c.score = profile.model_dump_json(), json.dumps(breakdown), breakdown["total"]
-        c.llm_fallback, c.status = fallback, "screened" if c.status == "new" else c.status
+def criteria(job: Job) -> tuple[list[str], list[str], dict]:
+    return json.loads(job.required_skills), json.loads(job.nice_to_have), json.loads(job.weights or "{}")
+
+
+def _job_candidates(session: Session, tenant_id: int, job: Job) -> list[Candidate]:
+    return list(session.exec(select(Candidate).where(Candidate.job_id == job.id, Candidate.tenant_id == tenant_id)).all())
+
+
+def _save_ranking(session: Session, cands: list[Candidate]) -> list[Candidate]:
     ordered = rank(cands)
     for c in ordered:
         session.add(c)
     session.commit()
     return ordered
+
+
+def screen_candidates(session: Session, tenant_id: int, job: Job) -> list[Candidate]:
+    """Reads new resumes (LLM) and scores them against the job criteria."""
+    req, nice, weights = criteria(job)
+    cands = _job_candidates(session, tenant_id, job)
+    todo = [c for c in cands if c.score is None]
+    # LLM calls run in parallel (LLM_CONCURRENCY); the DB is only touched from this thread.
+    with ThreadPoolExecutor(max_workers=max(1, get_settings().llm_concurrency)) as pool:
+        parsed = list(pool.map(lambda c: parse_resume(c.text, req + nice), todo))
+    for c, (profile, fallback) in zip(todo, parsed):
+        breakdown = score(profile, req, nice, job.min_years, weights)
+        c.name, c.email = profile.name, verified_email(profile.email, c.text)
+        c.profile_json, c.score_json, c.score = profile.model_dump_json(), json.dumps(breakdown), breakdown["total"]
+        c.llm_fallback, c.status = fallback, "screened" if c.status == "new" else c.status
+    return _save_ranking(session, cands)
+
+
+def rescore(session: Session, tenant_id: int, job: Job) -> list[Candidate]:
+    """Re-ranks already-read resumes with the job's current criteria. Pure code, no LLM call: instant."""
+    req, nice, weights = criteria(job)
+    cands = _job_candidates(session, tenant_id, job)
+    for c in cands:
+        if c.score is None:
+            continue
+        breakdown = score(CandidateProfile.model_validate_json(c.profile_json), req, nice, job.min_years, weights)
+        c.score_json, c.score = json.dumps(breakdown), breakdown["total"]
+    return _save_ranking(session, cands)
