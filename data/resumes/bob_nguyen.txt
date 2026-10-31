@@ -1,0 +1,5 @@
+Bob Nguyen
+bob.nguyen@example.com
+Junior developer, 1 years experience building web apps.
+Skills: JavaScript, React, Git
+Education: BSc Software Engineering

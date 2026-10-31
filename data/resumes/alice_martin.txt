@@ -1,0 +1,5 @@
+Alice Martin
+alice.martin@example.com | +33 6 11 22 33 44
+Senior Backend Engineer with 6 years of experience.
+Skills: Python, FastAPI, SQL, Docker, AWS, Git, Linux
+Education: MSc Computer Science

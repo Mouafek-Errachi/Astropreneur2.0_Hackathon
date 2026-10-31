@@ -1,0 +1,7 @@
+{
+  "title": "Backend Engineer",
+  "description": "Build and run our Python APIs.",
+  "required_skills": ["python", "sql", "docker"],
+  "nice_to_have": ["fastapi", "aws", "kubernetes"],
+  "min_years": 3
+}
