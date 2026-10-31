@@ -29,13 +29,13 @@ python -m venv .venv
 cp .env.example .env
 ```
 
-```bash
-.venv/Scripts/uvicorn backend.main:app --reload
-```
+Then start the backend and the dashboard together with one command (Ctrl+C stops both):
 
 ```bash
-.venv/Scripts/streamlit run dashboard/app.py
+.venv/Scripts/python run.py
 ```
+
+On Windows you can also double-click `run.bat`.
 
 - API docs: http://localhost:8000/docs
 - Dashboard: http://localhost:8501

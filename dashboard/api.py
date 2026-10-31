@@ -4,7 +4,13 @@ import os
 import requests
 import streamlit as st
 
-API_URL = os.getenv("API_URL", "http://localhost:8000")
+# 127.0.0.1, not "localhost": on Windows "localhost" tries IPv6 first and adds ~2s to every request.
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+
+
+@st.cache_resource
+def _http() -> requests.Session:
+    return requests.Session()  # keep-alive: reuse one connection across reruns
 
 
 def call(method: str, path: str, **kwargs):
@@ -12,7 +18,7 @@ def call(method: str, path: str, **kwargs):
     if token := st.session_state.get("token"):
         headers["Authorization"] = f"Bearer {token}"
     try:
-        r = requests.request(method, f"{API_URL}{path}", headers=headers, timeout=120, **kwargs)
+        r = _http().request(method, f"{API_URL}{path}", headers=headers, timeout=120, **kwargs)
     except requests.RequestException as e:
         st.error(f"Backend unreachable: {e}")
         st.stop()
