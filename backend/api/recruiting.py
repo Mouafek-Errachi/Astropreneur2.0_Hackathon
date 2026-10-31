@@ -65,7 +65,7 @@ async def upload_resumes(job_id: str, files: list[UploadFile] = File(...), p: Pr
     results = []
     for f in files:
         data = await f.read(s.max_upload_bytes + 1)  # never read more than the limit into memory
-        results.append(ingestion.ingest_resume(session, p.tenant_id, job, f.filename or "file", data))
+        results.append(ingestion.ingest_resume(session, p.tenant_id, job, f.filename or "file", data, actor=p.subject))
     audit.log(session, actor=p.subject, event="resumes.uploaded", tenant_id=p.tenant_id, target=f"job:{job.id}",
               detail={"count": len(files), "accepted": sum(r["accepted"] for r in results)})
     return results

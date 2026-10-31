@@ -120,7 +120,8 @@ def load_demo(session: Session, tenant_id: int, actor: str, bulk: bool = False) 
     for job, files in batches:
         for f in files:
             if f.is_file():
-                out["resumes"].append({**ingestion.ingest_resume(session, tenant_id, job, f.name, f.read_bytes()),
+                out["resumes"].append({**ingestion.ingest_resume(session, tenant_id, job, f.name, f.read_bytes(),
+                                                                 source="demo", actor="seed"),
                                        "job": job.title})
 
     emails_file = data / "emails" / "sample_emails.json"

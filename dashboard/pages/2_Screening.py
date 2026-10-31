@@ -12,6 +12,8 @@ require_login()
 st.header("Resume screening")
 
 DECISIONS = ["shortlisted", "interview", "rejected"]
+SOURCE_BADGE = {"upload": "⬆️ upload", "email": "✉️ email", "linkedin": "💼 linkedin", "drive": "📁 drive",
+                "form": "📝 form", "job_board": "🌐 job board", "other": "🔗 other", "demo": "🧪 demo"}
 EMAIL_KIND = {"rejected": "rejection"}  # invitations go through Scheduling (they carry the booking link)
 
 
@@ -351,6 +353,7 @@ else:
         "Compare": c["application_id"] in picked,
         "Rank": c["rank"],
         "Candidate": m["name"],
+        "Source": SOURCE_BADGE.get(c.get("source", "upload"), c.get("source", "upload")),
         "Score": c["score"],
         "Required skills": ", ".join(c["score_breakdown"].get("required_matched", [])),
         "Missing": ", ".join(c["score_breakdown"].get("required_missing", [])),
@@ -373,6 +376,7 @@ else:
                 width="small", pinned=True, help="Tick two or more candidates, then click Compare above the table."),
             "Rank": st.column_config.NumberColumn(width="small", pinned=True),
             "Candidate": st.column_config.TextColumn(pinned=True),
+            "Source": st.column_config.TextColumn(width="small", help="Where the CV came from (see the Sources page)."),
             "Score": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%.0f", width="small"),
             "Years": st.column_config.NumberColumn(width="small", format="%g"),
             "Why": st.column_config.TextColumn(width="large"),
@@ -469,7 +473,8 @@ with st.expander("Add resumes to this job", expanded=bool(last_upload) or not ra
             st.success(f"{ok} resume(s) added and ranked above.")
         if refused := [r for r in last_upload if not r["accepted"]]:
             st.warning("Refused: " + "; ".join(f"{r['filename']} ({r['error']})" for r in refused))
-    files = st.file_uploader("PDF, DOCX or TXT", accept_multiple_files=True, key=f"files{job['id']}")
+    files = st.file_uploader("PDF, Word, OpenDocument, RTF, HTML, text, JSON or a photo (JPG, PNG, WebP)",
+                             accept_multiple_files=True, key=f"files{job['id']}")
     if files and st.button("Upload"):
         res = call("POST", f"/jobs/{job['id']}/resumes", files=[("files", (f.name, f.getvalue())) for f in files])
         if res:

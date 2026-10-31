@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:8501,http://127.0.0.1:8501"
     rate_limit_enabled: bool = True
     login_rate_limit: str = "5/minute"
+    intake_rate_limit: str = "60/minute"  # POST /intake/resumes, per client IP
     default_rate_limit: str = "300/minute"  # applied to every route without its own limit
     max_request_mb: float = 60.0
 

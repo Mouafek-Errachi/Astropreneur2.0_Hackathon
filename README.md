@@ -125,6 +125,19 @@ docs/architecture/
 
 `POST /jobs/{id}/learn-weights` takes a CSV of past hires (`skills`, `years_experience`, `jira_done`, `performance` out of 100, optional `group`) and learns how much each criterion predicted a good outcome (success = 50% performance + 50% Jira tickets ranked among colleagues; the better half counts as good) with a ridge logistic regression (`backend/orchestration/learner.py`). Only the weights are learned, so every score is still explained the same way. Any other column is refused, at least 30 hires are needed, rows are not stored, and with a `group` column the four-fifths rule must pass or nothing is proposed. The weights go to the approval queue as `apply_weights`; someone other than the proposer approves them, then candidates are re-ranked.
 
+## CV intake from every source
+
+`POST /intake/resumes` (header `X-API-Key`) receives CVs from outside tools (`backend/api/intake.py`). Each item is a file (`content_base64`), pasted `text`, or a structured `profile` (job board JSON, JSON Resume), tagged with its `source` (`email`, `drive`, `form`, `job_board`, `linkedin`, `other`) and a `source_ref` (the id in that system). Everything goes through the same ingestion as a dashboard upload, then screening continues as before.
+
+- **Formats:** PDF, Word, OpenDocument, RTF, HTML, text, JSON, and photos or scans (JPG, PNG, WebP), which Gemini transcribes (needs `LLM_PROVIDER=gemini`).
+- **Hidden text:** on top of the PDF and Word checks, ODT hidden text, RTF `\v` and hidden HTML are kept away from the agents and scanned by the Injection Guard. A structured profile is turned into text, so every field is scanned.
+- **File safety:** types are checked by content, not by name; zip bombs, oversize files and invalid base64 are refused per item.
+- **Keys:** an admin creates an upload-only key (scope `resumes:upload`) on the **Sources** page or with `POST /auth/api-keys`. No key can ever approve.
+- **Duplicates:** the same `source` + `source_ref`, or the same file, is received once, so n8n can retry safely.
+- **Log:** every CV, accepted or refused, is in `GET /intake/log` and on the Sources page.
+
+n8n collects the CVs: import `n8n/workflows/intake-resume-collector.json` (Gmail, Google Drive, an application form, a job-board webhook). `n8n/pitch/` holds five mock-data workflows that show each feature for a demo.
+
 ## Testing real email sending
 
 By default approved emails are only recorded (Approvals > Sent emails, `transport: outbox`). To send them over SMTP

@@ -83,6 +83,26 @@ class Resume(SQLModel, table=True):
     injection_score: float = 0.0  # 0..1
     flags: str = "[]"
     risk_level: str = "none"
+    source: str = "upload"  # upload | email | linkedin | drive | form | job_board | other | demo
+    source_ref: str = Field(default="", index=True)  # id in the source system (Gmail id, form id...)
+    created_at: datetime = Field(default_factory=utcnow)
+
+
+class IntakeLog(SQLModel, table=True):
+    """Every resume received, accepted or refused, with where it came from and who sent it."""
+
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    job_id: uuid.UUID = Field(foreign_key="joboffer.id", index=True)
+    source: str = "upload"
+    source_ref: str = ""
+    filename: str = ""
+    actor: str = ""
+    accepted: bool = False
+    candidate_id: Optional[uuid.UUID] = None
+    error: str = ""
+    risk_level: str = "none"
+    flags: str = "[]"  # JSON list of flag types
     created_at: datetime = Field(default_factory=utcnow)
 
 

@@ -183,7 +183,7 @@ def ranking(session: Session, job: JobOffer) -> list[dict]:
             "justification": just, "score_breakdown": just.get("breakdown", {}), "profile": json.loads(resume.profile),
             "fairness": {"rank_delta": fair.rank_delta, "counterfactual_score": fair.counterfactual_score,
                          **json.loads(fair.counterfactuals)} if fair else None,
-            "filename": resume.original_filename,
+            "filename": resume.original_filename, "source": resume.source,
         })
     return sorted(out, key=lambda r: (r["rank"] is None, r["rank"] or 0))
 

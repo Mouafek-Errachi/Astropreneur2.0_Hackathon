@@ -2,12 +2,14 @@
 Everything passes the Injection Guard; high-risk email is quarantined and never reaches an agent."""
 import hashlib
 import json
+import uuid
 from datetime import datetime, timezone
 
 from sqlmodel import Session, select
 
+from backend.agents import llm
 from backend.data import storage, vectors
-from backend.data.models import Application, Candidate, EmailMessage, JobOffer, Resume, utcnow
+from backend.data.models import Application, Candidate, EmailMessage, IntakeLog, JobOffer, Resume, utcnow
 from backend.orchestration import followups
 from backend.security import audit, events
 from backend.security.guard import inspect_text
@@ -47,19 +49,36 @@ def ingest_email(session: Session, tenant_id: int, *, sender: str, subject: str,
     return e
 
 
-def ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: str, data: bytes) -> dict:
+def ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: str, data: bytes, *,
+                  source: str = "upload", source_ref: str = "", actor: str = "") -> dict:
+    """Every source ends here (dashboard upload, /intake/resumes, demo data): same file guard, Injection Guard and
+    duplicate checks. Each resume received, accepted or refused, is written to the intake log."""
+    result = _ingest_resume(session, tenant_id, job, filename, data, source, source_ref)
+    session.add(IntakeLog(tenant_id=tenant_id, job_id=job.id, source=source, source_ref=source_ref,
+                          filename=result["filename"], actor=actor, accepted=result["accepted"],
+                          candidate_id=uuid.UUID(result["candidate_id"]) if result.get("candidate_id") else None,
+                          error=result.get("error", ""), risk_level=result.get("risk_level", "none"),
+                          flags=json.dumps(result.get("flags", []))))
+    session.commit()
+    return result
+
+
+def _ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: str, data: bytes, source: str,
+                   source_ref: str) -> dict:
     name = safe_display_filename(filename)
+    same_job = (select(Resume.id).join(Application, Application.resume_id == Resume.id)
+                .where(Resume.tenant_id == tenant_id, Application.job_id == job.id))
+    if source_ref and session.exec(same_job.where(Resume.source == source, Resume.source_ref == source_ref)).first():
+        return {"filename": name, "accepted": False, "error": "already received from this source"}
     qpath = storage.quarantine(data)
     try:
-        doc = extract(data)
+        doc = extract(data, transcribe=llm.transcribe_image)
     except FileRejected as e:
         storage.discard(qpath)
         events.record(session, tenant_id=tenant_id, source="file", kind="blocked_file", severity="medium",
                       detail={"filename": name, "reason": str(e)})
         return {"filename": name, "accepted": False, "error": str(e)}
     sha = hashlib.sha256(data).hexdigest()
-    same_job = (select(Resume.id).join(Application, Application.resume_id == Resume.id)
-                .where(Resume.tenant_id == tenant_id, Application.job_id == job.id))
     if session.exec(same_job.where(Resume.sha256 == sha)).first():
         storage.discard(qpath)
         return {"filename": name, "accepted": False, "error": "duplicate file for this job"}
@@ -72,7 +91,8 @@ def ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: str
     session.flush()
     resume = Resume(tenant_id=tenant_id, candidate_id=cand.id, original_filename=name,
                     stored_filename=storage.promote(qpath, doc.mime), mime_type=doc.mime, sha256=sha,
-                    raw_text=doc.text, hidden_text=doc.hidden_text, embedding=vectors.dumps(vectors.embed(doc.text)))
+                    raw_text=doc.text, hidden_text=doc.hidden_text, embedding=vectors.dumps(vectors.embed(doc.text)),
+                    source=source, source_ref=source_ref)
     session.add(resume)
     session.flush()
     g = inspect_text(session, doc.text, source="resume", source_id=str(resume.id), tenant_id=tenant_id,

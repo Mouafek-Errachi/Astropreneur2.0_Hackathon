@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlmodel import Session
 
-from backend.api import approvals, auth, hr, inbox, recruiting, scheduling, security, staffing
+from backend.api import approvals, auth, hr, inbox, intake, recruiting, scheduling, security, staffing
 from backend.config import get_settings
 from backend.data.db import engine, init_db
 from backend.orchestration import seed
@@ -71,5 +71,5 @@ def health():
 
 
 for r in (auth.router, recruiting.router, inbox.router, approvals.router, scheduling.router, hr.router, security.router,
-          staffing.router):
+          staffing.router, intake.router):
     app.include_router(r)

@@ -9,6 +9,13 @@ EXT_FOR_MIME = {
     "application/pdf": ".pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
     "text/plain": ".txt",
+    "application/vnd.oasis.opendocument.text": ".odt",
+    "text/rtf": ".rtf",
+    "text/html": ".html.txt",  # never served as HTML
+    "application/json": ".json",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
 }
 
 
