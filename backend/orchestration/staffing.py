@@ -12,7 +12,7 @@ from collections import defaultdict
 
 import magic
 from fastapi import HTTPException
-from sqlmodel import Session, delete, select
+from sqlmodel import Session, select
 
 from backend.agents import jd_writer, project_analyzer
 from backend.config import get_settings
@@ -248,8 +248,8 @@ def compute_gaps(session: Session, project: Project) -> list[SkillGap]:
     for es in session.exec(select(EmployeeSkill).where(EmployeeSkill.tenant_id == tid)):
         if es.employee_id in active:
             skills[es.skill].append(es)
+    # Gaps are updated in place (stable ids): pending job descriptions and the UI keep pointing at the same row.
     previous = {g.skill: g for g in session.exec(select(SkillGap).where(SkillGap.project_id == project.id))}
-    session.exec(delete(SkillGap).where(SkillGap.project_id == project.id))
     gaps = []
     for req in current_requirements(session, project):
         needed = round(req.headcount * req.allocation_pct / 100, 2)
@@ -281,29 +281,36 @@ def compute_gaps(session: Session, project: Project) -> list[SkillGap]:
             continue
         kind = ("missing" if not holders else
                 "insufficient_level" if all(h.level < req.level for h in holders) else "insufficient_capacity")
-        prev = previous.get(req.skill)
-        gap = SkillGap(tenant_id=tid, project_id=project.id, skill=req.skill, level=req.level, needed_fte=needed,
-                       covered_fte=covered, gap_fte=round(needed - covered, 2), kind=kind,
-                       internal_options=json.dumps(options[:8]))
-        if prev:  # human decisions and hiring links survive a recompute
-            gap.decision, gap.decided_by, gap.status = prev.decision, prev.decided_by, prev.status
-            gap.action_id, gap.job_offer_id = prev.action_id, prev.job_offer_id
+        # human decisions and hiring links survive a recompute: only the numbers and options are refreshed
+        gap = previous.pop(req.skill, None) or SkillGap(tenant_id=tid, project_id=project.id, skill=req.skill, level=req.level,
+                                                        needed_fte=0, covered_fte=0, gap_fte=0, kind=kind)
+        gap.level, gap.needed_fte, gap.covered_fte = req.level, needed, covered
+        gap.gap_fte, gap.kind, gap.internal_options = round(needed - covered, 2), kind, json.dumps(options[:8])
         session.add(gap)
         gaps.append(gap)
+    for closed in previous.values():  # covered now, or no longer required
+        if closed.status in ("jd_proposed", "hiring"):
+            closed.gap_fte, closed.covered_fte = 0, closed.needed_fte  # keep the row: a job offer depends on it
+            session.add(closed)
+        else:
+            session.delete(closed)
     session.commit()
     for g in gaps:
         session.refresh(g)
     return gaps
 
 
-def set_decision(session: Session, gap: SkillGap, decision: str, actor: str) -> SkillGap:
+def set_decision(session: Session, gap: SkillGap, decision: str, actor: str, plan: str = "") -> SkillGap:
     if gap.status in ("jd_proposed", "hiring") and decision != "hire_externally":
         raise HTTPException(409, "A job description is already in progress for this gap")
+    if decision == "internal" and not plan.strip():
+        raise HTTPException(422, "Say how the gap is covered internally (pick an internal option or write a plan)")
     gap.decision, gap.decided_by = decision, actor
+    gap.internal_plan = plan.strip()[:300] if decision == "internal" else ""
     session.add(gap)
     session.commit()
     audit.log(session, actor=actor, event="skill_gap.decided", tenant_id=gap.tenant_id, target=f"gap:{gap.id}",
-              detail={"skill": gap.skill, "decision": decision})
+              detail={"skill": gap.skill, "decision": decision, "plan": gap.internal_plan})
     session.refresh(gap)
     return gap
 

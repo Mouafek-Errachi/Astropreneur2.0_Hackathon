@@ -132,36 +132,65 @@ with tab_projects:
         st.subheader("Skill gaps")
         if not p["gaps"]:
             st.success("The team covers every required skill at the level and capacity asked.")
+        else:
+            done = sum(g["decision"] != "open" for g in p["gaps"])
+            st.caption(f"{done} of {len(p['gaps'])} gaps decided. Decide each gap: cover it internally (pick how) or "
+                       "hire externally (a job description goes to Approvals).")
         for g in p["gaps"]:
-            head = (f"{KIND[g['kind']]} **{g['skill']}** (level {g['level']}): {g['gap_fte']:g} FTE missing "
+            state = ("✅ covered internally · " if g["decision"] == "internal" else
+                     "🧾 hiring · " if g["status"] == "hiring" else
+                     "⏳ job description in Approvals · " if g["status"] == "jd_proposed" else
+                     "➡️ hire externally · " if g["decision"] == "hire_externally" else "❔ undecided · ")
+            head = (f"{state}{KIND[g['kind']]} **{g['skill']}** (level {g['level']}): {g['gap_fte']:g} FTE missing "
                     f"({g['covered_fte']:g} of {g['needed_fte']:g} covered)")
-            with st.expander(head, expanded=g["status"] == "open"):
-                if g["internal_options"]:
-                    st.markdown("**Internal options first** (upskill, rebalance, validate a declared skill, related skill):")
-                    for o in g["internal_options"]:
-                        who = f"{o['employee_id']}: " if "employee_id" in o else ""
-                        st.write(f"- {o['kind']}: {who}{o['reason']}")
+            with st.expander(head, expanded=g["decision"] == "open" or (g["decision"] == "hire_externally" and g["status"] == "open")):
+                labels = [f"{o['kind']}: {o['employee_id'] + ' - ' if 'employee_id' in o else ''}{o['reason']}"
+                          for o in g["internal_options"]]
+                if labels:
+                    st.markdown("**Internal options first:**")
+                    for label in labels:
+                        st.write(f"- {label}")
                     if "skills:read" not in scopes:
                         st.caption("Names are visible to managers only.")
                 else:
                     st.caption("No internal option: nobody has this skill or a related one.")
-                if g["status"] == "hiring":
-                    st.success(f"Job offer created ({g['job_offer_id']}): rank applicants on the Screening page.")
+
+                if g["decision"] == "internal":
+                    st.success(f"Covered internally: {g['internal_plan']}  (decided by {g['decided_by']})")
+                elif g["status"] == "hiring":
+                    st.success(f"Job offer created: rank applicants on the Screening page ({g['job_offer_id']}).")
                 elif g["status"] == "jd_proposed":
-                    st.info("Job description waiting in Approvals (someone else must approve it).")
-                elif can_write:
-                    c1, c2 = st.columns([2, 2])
-                    choice = c1.radio("Decision", ["open", "internal", "hire_externally"], key=f"dec{g['id']}",
-                                      index=["open", "internal", "hire_externally"].index(g["decision"]), horizontal=True,
-                                      format_func={"open": "undecided", "internal": "cover internally",
-                                                   "hire_externally": "hire externally"}.get)
-                    if choice != g["decision"]:
-                        call("PUT", f"/projects/{pid}/gaps/{g['id']}", json={"decision": choice})
-                        st.rerun()
-                    if g["decision"] == "hire_externally" and c2.button("📝 Draft job description", key=f"jd{g['id']}"):
+                    st.info("Job description waiting in Approvals: someone other than you must approve it.")
+                elif g["decision"] == "hire_externally":
+                    st.info(f"Decided by {g['decided_by']}: hire externally. Draft the job description.")
+
+                if not can_write or g["status"] in ("jd_proposed", "hiring"):
+                    pass
+                elif g["decision"] == "open":
+                    with st.form(f"internal{g['id']}"):
+                        st.markdown("**Cover internally**")
+                        pick = st.selectbox("How", ["(write my own plan)"] + labels, key=f"pick{g['id']}")
+                        own = st.text_input("Plan", key=f"own{g['id']}", placeholder="e.g. emp_002 takes the FastAPI "
+                                            "training in November, emp_001 mentors")
+                        if st.form_submit_button("✅ Confirm: cover internally", type="primary"):
+                            plan = own.strip() or ("" if pick.startswith("(") else pick)
+                            if not plan:
+                                st.warning("Pick an internal option or write a plan first.")
+                            elif call("PUT", f"/projects/{pid}/gaps/{g['id']}", json={"decision": "internal", "plan": plan}):
+                                st.rerun()
+                    if st.button("➡️ Hire externally instead", key=f"ext{g['id']}"):
+                        if call("PUT", f"/projects/{pid}/gaps/{g['id']}", json={"decision": "hire_externally"}):
+                            st.rerun()
+                else:
+                    c1, c2 = st.columns(2)
+                    if g["decision"] == "hire_externally" and c1.button("📝 Draft job description", key=f"jd{g['id']}",
+                                                                       type="primary"):
                         r = call("POST", f"/projects/{pid}/gaps/{g['id']}/job-description")
                         if r:
                             st.session_state[f"jd_{g['id']}"] = r
+                            st.rerun()
+                    if c2.button("↩️ Undo decision (back to undecided)", key=f"undo{g['id']}"):
+                        if call("PUT", f"/projects/{pid}/gaps/{g['id']}", json={"decision": "open"}):
                             st.rerun()
                 if jd := st.session_state.get(f"jd_{g['id']}"):
                     st.markdown(f"**{jd['payload']['title']}** (risk: {jd['risk_level']})")

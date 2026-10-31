@@ -29,6 +29,7 @@ def _gap_out(g: SkillGap, p: Principal) -> dict:
         options = [{"kind": o["kind"], "reason": o["reason"]} for o in options]
     return {"id": str(g.id), "skill": g.skill, "level": g.level, "kind": g.kind, "needed_fte": g.needed_fte,
             "covered_fte": g.covered_fte, "gap_fte": g.gap_fte, "internal_options": options, "decision": g.decision,
+            "internal_plan": g.internal_plan,
             "decided_by": g.decided_by, "status": g.status, "action_id": str(g.action_id) if g.action_id else None,
             "job_offer_id": str(g.job_offer_id) if g.job_offer_id else None}
 
@@ -121,7 +122,8 @@ def _gap(session: Session, project_id: str, gap_id: str, p: Principal) -> SkillG
 @router.put("/projects/{project_id}/gaps/{gap_id}")
 def decide(project_id: str, gap_id: str, body: GapDecision,
            p: Principal = Depends(require("projects:write", human_only=True)), session: Session = Depends(get_session)):
-    return _gap_out(staffing.set_decision(session, _gap(session, project_id, gap_id, p), body.decision, p.subject), p)
+    gap = _gap(session, project_id, gap_id, p)
+    return _gap_out(staffing.set_decision(session, gap, body.decision, p.subject, body.plan), p)
 
 
 @router.post("/projects/{project_id}/gaps/{gap_id}/job-description")

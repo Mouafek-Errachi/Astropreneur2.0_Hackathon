@@ -366,6 +366,7 @@ class SkillGap(SQLModel, table=True):
     kind: str  # missing | insufficient_level | insufficient_capacity
     internal_options: str = "[]"  # [{employee_id, reason, level}]
     decision: str = "open"  # open | internal | hire_externally
+    internal_plan: str = ""  # how the gap is covered internally (chosen from the internal options, or written)
     decided_by: str = ""
     status: str = "open"  # open | jd_proposed | hiring | closed
     action_id: Optional[uuid.UUID] = None

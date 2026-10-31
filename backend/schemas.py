@@ -146,6 +146,7 @@ class RequirementsIn(Strict):
 
 class GapDecision(Strict):
     decision: Literal["open", "internal", "hire_externally"]
+    plan: str = Field(default="", max_length=300)  # required to cover a gap internally
 
 
 class EmployeeSkillIn(Strict):

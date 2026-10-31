@@ -193,3 +193,27 @@ def test_manifests_are_parsed_not_executed_and_fakes_are_refused(client, recruit
     files = [("files", ("package.json", b"\x00\x01binary\x00")), ("files", ("spec.pdf", b"MZ\x90\x00 not a pdf at all"))]
     r = client.post(f"/projects/{p['id']}/documents", files=files, headers=recruiter).json()
     assert [d["accepted"] for d in r["documents"]] == [False, False]
+
+
+# -------------------------------------------------------------------- a gap covered internally
+def test_gap_covered_internally_needs_a_plan_and_blocks_hiring(client, recruiter, manager):
+    tools = _project(client, recruiter, "HR internal tools portal")
+    gaps = _confirm(client, recruiter, tools["id"])
+    assert set(gaps) == {"fastapi"}  # python, react, docker, javascript are covered by the team
+    fa = gaps["fastapi"]
+    assert fa["kind"] == "insufficient_capacity"
+    kinds = {o["kind"] for o in client.get(f"/projects/{tools['id']}/gaps", headers=manager).json()[0]["internal_options"]}
+    assert {"rebalance", "upskill"} <= kinds  # emp_001 has it but is booked; emp_002 is one level below
+
+    url = f"/projects/{tools['id']}/gaps/{fa['id']}"
+    assert client.put(url, json={"decision": "internal"}, headers=recruiter).status_code == 422  # plan required
+    resp = client.put(url, json={"decision": "internal", "plan": "upskill: emp_002 takes the FastAPI training"},
+                      headers=recruiter)
+    assert resp.status_code == 200, resp.text
+    r = resp.json()
+    assert r["decision"] == "internal" and "emp_002" in r["internal_plan"]
+    assert client.post(f"{url}/job-description", headers=recruiter).status_code == 409  # covered: no hiring
+    again = client.post(f"/projects/{tools['id']}/gaps/recompute", headers=recruiter).json()
+    assert again[0]["decision"] == "internal" and again[0]["internal_plan"]  # survives a recompute
+    undone = client.put(url, json={"decision": "open"}, headers=recruiter).json()
+    assert undone["decision"] == "open" and undone["internal_plan"] == ""
