@@ -1,0 +1,5 @@
+team_id,display_name,member_count,mailing_list,tone_guide
+engineering,Engineering,24,engineering@hr-demo.test,Concise and precise; bullet points; exact dates and times; say what changes for their tools or workflow.
+sales,Sales,15,sales@hr-demo.test,Energetic and outcome-focused; lead with impact on clients and targets; short paragraphs.
+media_team,Media,9,media@hr-demo.test,Warm and creative; light storytelling; clear deadlines and which assets are needed.
+operations,Operations,18,operations@hr-demo.test,"Practical and step-by-step; who does what, where and when; safety first."

@@ -1,0 +1,249 @@
+{
+  "name": "HR API: GET /api/hr/approvals",
+  "nodes": [
+    {
+      "id": "dbd643d1-5621-409e-a03d-62962ff34231",
+      "name": "Approvals List Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "api/hr/approvals",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "webhookId": "3d756cd4-4295-45ea-b209-4ea3e12e8c0d"
+    },
+    {
+      "id": "a12dfe19-b3f2-40c3-9d03-997e06e68500",
+      "name": "Lookup API Key",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        200,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_api_keys"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "api_key",
+              "condition": "eq",
+              "keyValue": "={{ $json.headers[\"x-api-key\"] || \"missing\" }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 1
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "id": "fd2dfdf9-0e66-4951-aa70-42d71747c5ac",
+      "name": "Authorize and Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const req = $('Approvals List Webhook').first().json;\nconst key = $input.first().json || {};\nconst rid = 'req_' + $execution.id;\nconst fail = (status, code, message) => [{ json: { valid: false, status_code: status, response: { ok: false, request_id: rid, error: { code, message } } } }];\nif (!key.api_key || key.active !== true || !['hr', 'hr_admin'].includes(key.client)) return fail(401, 'UNAUTHORIZED', 'Missing or invalid API key for this endpoint');\nconst q = req.query || {};\nconst errors = [];\nfor (const k of Object.keys(q)) if (!['status', 'type', 'limit'].includes(k)) errors.push('unknown query parameter: ' + k);\nconst status = q.status ? String(q.status) : 'pending_approval';\nif (!['pending_approval', 'approved', 'sent', 'recorded', 'rejected', 'failed'].includes(status)) errors.push('status must be pending_approval, approved, sent, recorded, rejected or failed');\nconst type = q.type ? String(q.type) : '';\nif (type && !['broadcast', 'ticket_reply', 'points_award'].includes(type)) errors.push('type must be broadcast, ticket_reply or points_award');\nconst limit = q.limit ? Number(q.limit) : 20;\nif (!Number.isInteger(limit) || limit < 1 || limit > 50) errors.push('limit must be an integer from 1 to 50');\nif (errors.length) return fail(400, 'VALIDATION_ERROR', errors.join('; '));\nreturn [{ json: { valid: true, request_id: rid, status, type, limit } }];"
+      }
+    },
+    {
+      "id": "757b54d2-0af3-4e09-ab3d-a9905894de71",
+      "name": "Is Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.valid }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "670a0d12-33a4-479c-83c0-35fabbdf9967",
+      "name": "Load Approvals",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        800,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "hr_approvals"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "={{ $json.status }}"
+            }
+          ]
+        },
+        "returnAll": true,
+        "orderBy": true,
+        "orderByColumn": "createdAt",
+        "orderByDirection": "DESC"
+      },
+      "executeOnce": true,
+      "alwaysOutputData": true
+    },
+    {
+      "id": "3774c2db-9b85-41ef-a48d-ac4c69a5cbe2",
+      "name": "Format List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        200
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const v = $('Authorize and Validate').first().json;\nconst parse = (s) => { try { return JSON.parse(s || '{}'); } catch (e) { return {}; } };\nconst now = Date.now();\nconst rows = $input.all().map(i => i.json).filter(r => r.approval_id && (!v.type || r.type === v.type));\nconst items = rows.slice(0, v.limit).map(r => {\n  const p = parse(r.payload);\n  const c = parse(r.checks);\n  const details = Object.assign({}, p);\n  delete details.draft;\n  delete details.ai_draft;\n  return {\n    approval_id: r.approval_id,\n    type: r.type,\n    status: r.status,\n    target: r.target_ref,\n    created_by: r.created_by,\n    created_at: r.createdAt,\n    decided_by: r.decided_by || null,\n    decided_at: r.decided_at || null,\n    edited_by_human: r.edited_by_human === true,\n    reason: r.reason || null,\n    draft: p.draft || null,\n    details,\n    checks: c.checks || null,\n    security: { injection_suspected: (c.flags || []).some(f => f.field !== 'model'), flags: c.flags || [], review_flag: c.review_flag || null },\n    stale: r.status === 'pending_approval' && r.createdAt ? (now - Date.parse(r.createdAt)) > 72 * 3600 * 1000 : false\n  };\n});\nreturn [{ json: { status_code: 200, response: { ok: true, request_id: v.request_id, data: { count: items.length, items } } } }];"
+      }
+    },
+    {
+      "id": "29b1db83-d392-4792-a931-ba481614c612",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response) }}",
+        "options": {
+          "responseCode": "={{ $json.status_code }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Approvals List Webhook": {
+      "main": [
+        [
+          {
+            "node": "Lookup API Key",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Lookup API Key": {
+      "main": [
+        [
+          {
+            "node": "Authorize and Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize and Validate": {
+      "main": [
+        [
+          {
+            "node": "Is Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid": {
+      "main": [
+        [
+          {
+            "node": "Load Approvals",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Approvals": {
+      "main": [
+        [
+          {
+            "node": "Format List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format List": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

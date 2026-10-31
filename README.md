@@ -64,7 +64,10 @@ backend/
   tests/
 dashboard/     app.py + pages/ (Screening, Inbox, Approvals, Followups, Scheduling, Ask HR)
 data/          sample resumes (incl. adversarial), jobs, emails, policies, calendar.json
+n8n/           alternative backend: n8n webhook workflows + Gemini, seed tables, Postman tests
 ```
+
+The `n8n/` folder is a second implementation of the same API as n8n workflows. See [n8n/README.md](n8n/README.md) for setup and the attack tests.
 
 ## Security design (so far)
 

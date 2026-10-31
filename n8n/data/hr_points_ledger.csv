@@ -1,0 +1,13 @@
+ledger_id,employee_id,action_type,points,period,awarded_on,awarded_by,note,source,idempotency_key
+pts_seed01,emp_001,mentoring_session,25,2026-10,2026-10-05,hr_amira,Mentored two new backend hires,hr_dashboard,seed_01
+pts_seed02,emp_001,mentoring_session,25,2026-10,2026-10-12,hr_amira,Mentoring session,hr_dashboard,seed_02
+pts_seed03,emp_001,mentoring_session,25,2026-10,2026-10-19,hr_amira,Mentoring session,hr_dashboard,seed_03
+pts_seed04,emp_001,training_completed,40,2026-10,2026-10-20,hr_amira,Secure coding course,hr_dashboard,seed_04
+pts_seed05,emp_001,peer_review,20,2026-10,2026-10-21,hr_amira,Reviewed API design doc,hr_dashboard,seed_05
+pts_seed06,emp_005,peer_review,20,2026-10,2026-10-07,hr_amira,Reviewed sales playbook,hr_dashboard,seed_06
+pts_seed07,emp_005,extra_task,30,2026-10,2026-10-14,hr_amira,Organised client day,hr_dashboard,seed_07
+pts_seed08,emp_005,peer_review,20,2026-10,2026-10-22,hr_amira,Peer review,hr_dashboard,seed_08
+pts_seed09,emp_003,completed_onboarding,50,2026-10,2026-10-03,hr_amira,Finished onboarding,hr_dashboard,seed_09
+pts_seed10,emp_003,training_completed,40,2026-10,2026-10-17,hr_amira,Brand guidelines training,hr_dashboard,seed_10
+pts_seed11,emp_007,event_participation,15,2026-10,2026-10-10,hr_amira,Safety day,hr_dashboard,seed_11
+pts_seed12,emp_007,extra_task,30,2026-10,2026-10-24,hr_amira,Warehouse inventory support,hr_dashboard,seed_12
