@@ -179,11 +179,29 @@ def create_job_form(expanded: bool) -> None:
 
 
 def load_demo_button() -> None:
-    if is_admin() and st.button("Load demo data (5 jobs, 100+ fictional resumes, 43 emails)"):
+    """The demo resumes go to the 5 demo jobs (not to the job on screen): say so, and open the first demo job."""
+    if is_admin() and st.button("Load demo data into the 5 demo jobs (100+ fictional resumes, 43 emails)"):
         with st.spinner("Loading..."):
             r = call("POST", "/admin/demo/load", params={"bulk": "true"})
         if r:
+            added: dict[str, int] = {}
+            for x in r["resumes"]:
+                if x["accepted"]:
+                    added[x["job"]] = added.get(x["job"], 0) + 1
+            st.session_state.demo_result = added or None
+            target = next((j for j in call("GET", "/jobs") or [] if j["title"] == "Backend Engineer"), None)
+            if target:
+                st.session_state.job_id = target["id"]
             st.rerun()
+
+
+if "demo_result" in st.session_state:
+    if added := st.session_state.pop("demo_result"):
+        st.success("Demo data loaded: " + ", ".join(f"{n} resumes into {t}" for t, n in added.items())
+                   + ". Showing Backend Engineer; pick another demo job in the list above the table.")
+    else:
+        st.info("The demo data was already loaded: every demo resume is already in its demo job (duplicates are "
+                "skipped). Pick Backend Engineer, Data Engineer, DevOps Engineer, Frontend Developer or HR Generalist.")
 
 
 jobs = call("GET", "/jobs") or []
