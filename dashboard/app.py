@@ -3,6 +3,7 @@
 This file is the router: the log-in page until there is a token, then the pages the role may use, grouped in the menu.
 """
 import html
+from pathlib import Path
 
 import streamlit as st
 
@@ -11,7 +12,10 @@ from nav import visible_pages
 from roles import public_roles, role_table
 from ui import chip, inject_css
 
-st.set_page_config(page_title="Secure AI HR", page_icon=":material/shield_person:", layout="wide")
+ASSETS = Path(__file__).parent / "assets"
+st.set_page_config(page_title="HRplus", page_icon=str(ASSETS / "hrplus-icon.svg"), layout="wide")
+# Top left of every page, above the menu; collapses to the icon when the sidebar is closed.
+st.logo(str(ASSETS / "hrplus.svg"), size="large", icon_image=str(ASSETS / "hrplus-icon.svg"))
 inject_css()
 
 if "token" not in st.session_state:

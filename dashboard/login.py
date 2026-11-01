@@ -13,7 +13,7 @@ DEMO_USERS = {  # HR staff only; what each role can do comes from the API (/auth
 
 _, middle, _ = st.columns([1, 1.7, 1])
 with middle:
-    st.title(":material/shield_person: Secure AI HR")
+    st.title("HRplus")
     st.caption("AI agents do the daily HR work. People make every decision.")
     if notice := st.session_state.pop("login_notice", None):
         st.warning(notice, icon=":material/schedule:")

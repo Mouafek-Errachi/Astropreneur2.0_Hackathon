@@ -9,13 +9,28 @@ me = st.session_state.me
 page_header(f"Welcome back, {me['email'].split('@')[0].split('.')[0].capitalize()}",
             "The agent executes, the human decides. Nothing is sent or recorded without a signed human approval.")
 
+def outcome(x: dict) -> str:
+    """What happened to one CV. A suspicious CV is kept (a person must see the attack) but held out of normal flow."""
+    if not x["accepted"]:
+        return "⛔ Refused"
+    if x.get("risk_level") in ("medium", "high"):
+        return "⚠️ Held for review"
+    return "✅ Clean"
+
+
 if r := st.session_state.pop("demo_result", None):
-    ok = sum(x["accepted"] for x in r["resumes"])
-    st.success(f"Demo data loaded: {r['jobs']} jobs, {ok} of {len(r['resumes'])} resumes accepted, "
-               f"{r['emails']} emails ingested.", icon=":material/science:")
-    with st.expander("What was loaded"):
-        st.dataframe([{k: x.get(k) for k in ("filename", "job", "accepted", "risk_level", "hidden_text_found", "error")}
-                      for x in r["resumes"]], width="stretch", hide_index=True)
+    results = [outcome(x) for x in r["resumes"]]
+    clean, held, refused = (results.count(o) for o in ("✅ Clean", "⚠️ Held for review", "⛔ Refused"))
+    st.success(f"Demo data loaded: {r['jobs']} jobs, {len(results)} CVs ({clean} clean, {held} held for review, "
+               f"{refused} refused), {r['emails']} emails.", icon=":material/science:")
+    with st.expander("What happened to each CV"):
+        st.caption("Held for review: the guard found hidden text or instructions aimed at the AI. The CV is kept so a "
+                   "person can see the attack, its application is marked 'needs review', and the planted text cannot "
+                   "set its score (the score is computed in code). Refused: the file itself was not allowed (wrong type, fake extension).")
+        st.dataframe([{"file": x["filename"], "job": x.get("job"), "result": res, "risk": x.get("risk_level") or "—",
+                       "hidden text": "yes" if x.get("hidden_text_found") else "",
+                       "reason refused": x.get("error") or ""} for x, res in zip(r["resumes"], results)],
+                     width="stretch", hide_index=True)
 
 
 def stat(col, label: str, value: int, page: str, link: str, help: str) -> None:
