@@ -56,6 +56,12 @@ Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bott
 7. **Project staffing:** open "Payments API migration", review the AI's draft requirements and confirm them: gaps appear (Python short on capacity, PostgreSQL level too low, Kubernetes missing). Mark Kubernetes "hire externally", draft the job description, and approve it as the manager: a new job appears on Screening. Show the mobile-app charter flagged for its planted injection, with gaps unchanged.
 8. **Ask HR:** "How many days can I work remotely?" (answered with a source), then a question outside the policies (escalated).
 
+## Interview Copilot (browser extension)
+
+[interview-copilot/](interview-copilot/) holds the live interview co-pilot: a Chrome extension (`extension/`) and its own
+FastAPI backend (`backend/`, separate virtualenv and `.env`). Its README explains the setup; run
+`backend/download_whisper.py` to fetch the local speech-to-text model, which is not stored in git.
+
 ## Architecture
 
 Five layers (diagrams in [docs/architecture/](docs/architecture/)):

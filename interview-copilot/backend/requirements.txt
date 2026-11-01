@@ -1,0 +1,17 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+pydantic-settings>=2.4
+PyJWT>=2.9
+google-genai>=1.0
+websockets>=14
+python-dotenv>=1.0
+python-docx>=1.1
+weasyprint>=62
+SQLAlchemy>=2.0
+psycopg[binary]>=3.2
+# PDF fallback when WeasyPrint's Pango is missing (e.g. Windows): fpdf2 + HarfBuzz for RTL/Arabic shaping
+fpdf2>=2.8
+uharfbuzz>=0.40
+# Speech-to-text without Deepgram: local Whisper (model downloaded once, ~480 MB for "small")
+faster-whisper>=1.1

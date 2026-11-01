@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Interview Copilot",
+  "version": "0.1.0",
+  "description": "AI interview copilot for HR teams.",
+  "permissions": [
+    "storage",
+    "tabCapture",
+    "offscreen",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "http://localhost:8010/*",
+    "http://127.0.0.1:8010/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "service_worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://meet.google.com/*",
+        "https://*.zoom.us/wc/*",
+        "https://*.zoom.us/j/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*"
+      ],
+      "js": [
+        "content/content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/bubble.css"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "options_page": "options.html",
+  "minimum_chrome_version": "116",
+  "action": {
+    "default_title": "Start audio capture for this interview"
+  }
+}
