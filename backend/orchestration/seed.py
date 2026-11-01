@@ -87,7 +87,9 @@ def index_policies(session: Session, tenant_id: int) -> int:
         session.add(PolicyChunk(tenant_id=tenant_id, doc_id=p["doc_id"], section=p["section"], title=p["title"],
                                 content=p["text"], embedding=vectors.dumps(vectors.embed(f"{p['title']} {p['tags']} {p['text']}"))))
         n += 1
-    for path in sorted((get_settings().data_dir / "policies").glob("*.md")):
+    from backend.orchestration.knowledge import docs_dir  # documents HR uploaded for the assistant
+
+    for path in [*sorted((get_settings().data_dir / "policies").glob("*.md")), *sorted(docs_dir(tenant_id).glob("*.md"))]:
         for i, section in enumerate(re.split(r"\n(?=## )", path.read_text(encoding="utf-8"))):
             lines = section.strip().splitlines()
             if len(lines) < 2:

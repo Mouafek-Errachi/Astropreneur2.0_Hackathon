@@ -1,14 +1,14 @@
 """Employee-facing and HR-ops endpoints (ported from the n8n workflows) + policy Q&A."""
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlmodel import Session, select
 
 from backend.agents import hr_ops as hr_agents
 from backend.agents import policy_rag
 from backend.data.db import get_session
 from backend.data.models import Employee, Followup, Team, Ticket
-from backend.orchestration import followups, hr_ops, seed
+from backend.orchestration import followups, hr_ops, knowledge, seed
 from backend.schemas import (AskRequest, AwardRequest, BroadcastRequest, GroupEmailRequest, InterviewAssistRequest,
                              TicketCreate)
 from backend.security import audit
@@ -25,11 +25,34 @@ def ask(body: AskRequest, p: Principal = Depends(require("qa:ask")), session: Se
     emp_ctx = ""
     if p.employee_id and (emp := session.get(Employee, p.employee_id)):
         emp_ctx = f"contract {emp.contract_type}, leave balance {emp.leave_balance_days} days"  # only their own data
-    hits = policy_rag.search(session, p.tenant_id, g.clean)
-    result, fallback = policy_rag.answer(g.clean, hits, emp_ctx)
+    history = [(t.role, t.text) for t in body.history]
+    # A follow-up ("and for interns?") is searched together with the questions before it.
+    query = " ".join([*(text for role, text in history[-4:] if role == "user"), g.clean])
+    hits = policy_rag.search(session, p.tenant_id, query)
+    result, fallback = policy_rag.answer(g.clean, hits, emp_ctx, history)
     return {**result.model_dump(), "llm_fallback": fallback, "flags": [f.to_dict() for f in g.flags],
-            "sources": [{"label": policy_rag.label(c), "title": c.title} for _, c in hits
+            "sources": [{"label": policy_rag.label(c), "title": c.title, "excerpt": c.content[:500]} for _, c in hits
                         if policy_rag.label(c) in result.cited_sources]}
+
+
+@router.get("/qa/documents")
+def documents(p: Principal = Depends(require("qa:ask"))):
+    return knowledge.list_docs(p.tenant_id)
+
+
+@router.post("/qa/documents")
+async def add_documents(files: list[UploadFile] = File(...), p: Principal = Depends(require("qa:admin", human_only=True)),
+                        session: Session = Depends(get_session)):
+    if len(files) > 10:
+        raise HTTPException(400, "Upload at most 10 documents at a time")
+    return [knowledge.add(session, p.tenant_id, f.filename or "document", await f.read(), p.subject) for f in files]
+
+
+@router.delete("/qa/documents/{doc_id}")
+def remove_document(doc_id: str, p: Principal = Depends(require("qa:admin", human_only=True)),
+                    session: Session = Depends(get_session)):
+    knowledge.delete(session, p.tenant_id, doc_id, p.subject)
+    return {"removed": doc_id}
 
 
 @router.post("/qa/reindex")

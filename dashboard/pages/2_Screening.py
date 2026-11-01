@@ -2,6 +2,7 @@
 emails from the table, compare, learned weights, plus the bias check, hidden-text warnings and candidate chat."""
 import io
 import json
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -17,7 +18,8 @@ page_header("Screening", "Describe who you are looking for: the AI turns it into
 DECISIONS = ["shortlisted", "interview", "rejected"]
 SOURCE_BADGE = {"upload": "⬆️ upload", "email": "✉️ email", "linkedin": "💼 linkedin", "drive": "📁 drive",
                 "form": "📝 form", "job_board": "🌐 job board", "other": "🔗 other", "demo": "🧪 demo"}
-EMAIL_KIND = {"rejected": "rejection"}  # invitations go through Scheduling (they carry the booking link)
+# An approved "interview" decision gets an invitation with free slots from the HR calendar (see invite_dialog).
+EMAIL_KIND = {"rejected": "rejection", "interview": "invitation"}
 
 
 def risky(c: dict) -> bool:
@@ -65,10 +67,46 @@ def run_ops() -> None:
             if call("POST", f"/applications/{op['aid']}/decision", json={"decision": op["value"]}):
                 st.toast(f"Decision '{op['value']}' for {esc(op['name'])} sent to the approval queue. "
                          "Someone else must approve it.", icon=":material/fact_check:")
+        elif op["op"] == "draft" and op["value"] == "invitation":
+            st.session_state.invite = {"aid": op["aid"], "name": op["name"]}
         elif op["op"] == "draft":
             r = call("POST", f"/applications/{op['aid']}/email", json={"kind": op["value"]})
             if r:
                 st.session_state.last_draft = {"name": op["name"], "kind": op["value"], **r}
+
+
+def _close_invite() -> None:
+    st.session_state.pop("invite", None)
+
+
+@st.dialog("Invite to interview", width="medium", on_dismiss=_close_invite)
+def invite_dialog() -> None:
+    """Free slots from the interviewer's calendar, then an invitation that waits in Approvals: there the reviewer books
+    one slot or lets the candidate pick one with a single-use link, and approving sends the email."""
+    inv = st.session_state.invite
+    st.markdown(f"**{esc(inv['name'])}** · the agent looks for free slots in the interviewer's calendar and drafts "
+                "the invitation. Nothing is sent until someone approves it.")
+    if not inv.get("done"):
+        form = st.empty()  # replaced by the result once the invitation is drafted
+        with form.container():
+            who = st.selectbox("Interviewer", call("GET", "/scheduling/interviewers") or [])
+            duration = st.select_slider("Duration", [30, 45, 60, 90], value=45, format_func=lambda m: f"{m} min")
+            if st.button("Find free slots and draft the invitation", type="primary", icon=":material/calendar_month:",
+                         disabled=not (who and can("scheduling:manage")), width="stretch"):
+                inv["done"] = call("POST", "/scheduling/propose", json={
+                    "application_id": inv["aid"], "interviewer": who, "duration_minutes": duration})
+        if not inv.get("done"):
+            return
+        form.empty()
+    st.success("Invitation drafted with these free slots. In Approvals, book one or let the candidate choose; "
+               "approving sends the email.", icon=":material/event_available:")
+    st.markdown("\n".join(f"- {_slot_label(s)}" for s in inv["done"]["slots"]))
+    st.page_link("pages/3_Approvals.py", label="Open Approvals", icon=":material/arrow_forward:")
+
+
+def _slot_label(s: dict) -> str:
+    start, end = datetime.fromisoformat(s["start"]), datetime.fromisoformat(s["end"])
+    return f"{start:%A %d %B, %H:%M}–{end:%H:%M}"
 
 
 def row_meta(c: dict, pending_decision: dict, pending_email: set) -> dict:
@@ -87,8 +125,10 @@ def row_meta(c: dict, pending_decision: dict, pending_email: set) -> dict:
         label, block = "📨 in Approvals", f"A draft for {name} is already waiting in Approvals."
     elif aid in pending_decision:
         label, block = "⏳ after approval", f"The decision for {name} is waiting for approval: draft the email once it is approved."
-    elif c["status"] in ("shortlisted", "interview"):
-        label, block = "📅 use Scheduling", f"Invite {name} from the Scheduling page: the invitation carries the booking."
+    elif c["status"] == "interview":
+        label, block = "📅 Invite to interview", None
+    elif c["status"] == "shortlisted":
+        label, block = "— shortlisted", f"{name} is shortlisted. Set the decision to interview to invite them."
     else:
         label, block = f"✉️ Draft {kind}", None
     decide_block = (f"{name} already has a decision waiting for approval. Approve or reject it in Approvals first."
@@ -317,6 +357,8 @@ if can("jobs:write"):
 st.session_state.job_id = job["id"]
 crit = job["criteria"]
 run_ops()
+if "invite" in st.session_state:
+    invite_dialog()
 
 ranking = call("GET", f"/jobs/{job['id']}/ranking") or []
 if unread := [c for c in ranking if c["score"] is None]:
@@ -402,7 +444,8 @@ else:
     pending = call("GET", "/approvals", params={"status": "pending"}) or []
     pending_decision = {a["payload"]["application_id"]: a["payload"]["decision"] for a in pending
                         if a["type"] == "record_decision"}
-    pending_email = {a["payload"].get("candidate_id") for a in pending if a["type"] in ("send_email", "send_reminder")}
+    pending_email = {a["payload"].get("candidate_id") for a in pending
+                     if a["type"] in ("send_email", "send_reminder", "schedule_interview")}
     metas = {c["application_id"]: row_meta(c, pending_decision, pending_email) for c in ranking}
     meta = [metas[c["application_id"]] for c in shown]
 

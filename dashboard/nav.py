@@ -32,7 +32,7 @@ PAGES = [
     Entry("People", "pages/7_HR_Ops.py", "HR operations", "support_agent", "hr-ops", "hr:read",
           "Tickets, team broadcasts, recognition points and the interview co-pilot."),
     Entry("People", "pages/6_Ask_HR.py", "Ask HR", "forum", "ask-hr", "qa:ask",
-          "Answers taken from the company policies, with sources."),
+          "Your HR assistant: answers from the company's documents, with sources."),
     Entry("Security", "pages/8_AI_Firewall.py", "AI Firewall", "shield", "firewall", "security:read",
           "Every blocked file, injection and quarantine, plus the tamper-proof audit log."),
 ]

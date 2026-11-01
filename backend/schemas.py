@@ -129,8 +129,14 @@ class ChooseSlot(Strict):
     slot_index: int = Field(ge=0, le=10)
 
 
+class ChatTurn(Strict):
+    role: Literal["user", "assistant"]
+    text: str = Field(max_length=2500)
+
+
 class AskRequest(Strict):
     question: str = Field(min_length=3, max_length=1000)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=6)  # earlier turns, for follow-up questions
 
 
 class TicketCreate(Strict):

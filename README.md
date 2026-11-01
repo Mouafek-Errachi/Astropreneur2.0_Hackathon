@@ -52,7 +52,10 @@ Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bott
 3. **Four-eyes:** as the recruiter, propose "rejected" for a candidate and try to approve it yourself (refused). Log in as admin and approve it.
 4. **Candidate email:** draft the rejection, edit it in the approval queue, approve: it appears in "Sent emails".
 5. **Inbox:** click **Sort them now** to classify, show the digest by urgency, and the phishing and injection emails quarantined (AI Firewall lights up).
-6. **Scheduling:** propose slots, approve with "let the candidate choose", open the link from the sent email, pick a slot; the link then stops working.
+6. **Interview:** on Screening, set a candidate's Decision to "interview" and have someone else approve it. The Email cell
+   then says **📅 Invite to interview**: pick the interviewer, and free slots come from the HR calendar. In Approvals,
+   book one slot, or approve with "let the candidate choose", open the link from the sent email and pick a slot (the
+   link then stops working). The booked interview appears on the Scheduling page.
 7. **Project staffing:** open "Payments API migration", review the AI's draft requirements and confirm them: gaps appear (Python short on capacity, PostgreSQL level too low, Kubernetes missing). Mark Kubernetes "hire externally", draft the job description, and approve it as the manager: a new job appears on Screening. Show the mobile-app charter flagged for its planted injection, with gaps unchanged.
 8. **Ask HR:** "How many days can I work remotely?" (answered with a source), then a question outside the policies (escalated).
 
