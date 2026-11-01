@@ -158,6 +158,22 @@ Then add `SMTP_HOST=127.0.0.1` and `SMTP_PORT=1025` to `.env`, restart `run.py`,
 the catcher's terminal and shows `transport: smtp` in Sent emails. With Docker, `docker compose --profile mail` runs
 MailHog instead (web inbox on http://localhost:8025).
 
+To send from a real Gmail account, so each approved email also appears in that account's **Sent** folder, turn on
+2-Step Verification, create an app password (Google Account > Security > App passwords) and set in `.env`:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_STARTTLS=true
+SMTP_USER=you@gmail.com
+SMTP_FROM=you@gmail.com
+SMTP_PASSWORD=the 16-letter app password
+```
+
+The demo employees and candidates have fictional addresses (`@hr-demo.test`, `@example.com`): Gmail accepts the send
+and keeps it in Sent, then the delivery fails and Gmail notifies you. To receive one yourself, upload a resume that
+contains your own address, then draft its acknowledgement email from the Screening table and approve it.
+
 ## Tests
 
 ```bash

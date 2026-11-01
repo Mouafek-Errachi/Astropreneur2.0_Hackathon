@@ -29,6 +29,8 @@ def _problem(r: requests.Response) -> str:
     except ValueError:
         return r.text[:300]
     detail = body.get("detail", "") if isinstance(body, dict) else ""
+    if isinstance(detail, dict):  # a refusal that also carries data, e.g. the blocked weight-learning report
+        detail = detail.get("message", "")
     if isinstance(detail, list):  # request validation: one entry per bad field
         detail = "; ".join(f"{'.'.join(map(str, e.get('loc', [])[1:]))}: {e.get('msg')}".lstrip(": ") for e in detail)
     code, sentence = re.match(r"(?:([A-Z][A-Z_]+):\s*)?(.*)", str(detail), re.S).groups()
@@ -38,7 +40,9 @@ def _problem(r: requests.Response) -> str:
     return text
 
 
-def call(method: str, path: str, timeout: int = 300, **kwargs):
+def call(method: str, path: str, timeout: int = 300, refused: str = "show", **kwargs):
+    """refused="return": a 4xx comes back as {"refused": message, "detail": the API's detail} instead of an error box,
+    for pages that show what the API sent along with the refusal."""
     headers = kwargs.pop("headers", {})
     if token := st.session_state.get("token"):
         headers["Authorization"] = f"Bearer {token}"
@@ -55,6 +59,12 @@ def call(method: str, path: str, timeout: int = 300, **kwargs):
     if r.status_code == 403 and method == "GET":
         st.info("Your role does not have access to this page.", icon=":material/lock:")
         st.stop()
+    if not r.ok and refused == "return" and r.status_code < 500:
+        try:
+            detail = r.json().get("detail")
+        except (ValueError, AttributeError):
+            detail = None
+        return {"refused": _problem(r) or "The request was refused.", "detail": detail}
     if not r.ok:
         problem = esc(_problem(r)) or "The request was refused."
         st.error(problem if r.status_code < 500 else f"The server had a problem ({r.status_code}). {problem}",

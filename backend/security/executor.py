@@ -141,6 +141,10 @@ def _send_email(session: Session, action: ProposedAction, to: str, subject: str,
         msg["From"], msg["To"], msg["Subject"], msg["Message-ID"] = s.smtp_from, to, subject, message_id
         msg.set_content(body)
         with smtplib.SMTP(s.smtp_host, s.smtp_port, timeout=10) as smtp:
+            if s.smtp_starttls or s.smtp_user:  # never send a password unencrypted
+                smtp.starttls()
+            if s.smtp_user:
+                smtp.login(s.smtp_user, s.smtp_password)
             smtp.send_message(msg)
         transport = "smtp"
     session.add(SentEmail(tenant_id=action.tenant_id, action_id=action.id, to=to, subject=subject, body=body,

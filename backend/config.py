@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     smtp_host: str = ""
     smtp_port: int = 1025
     smtp_from: str = "hr@acme.test"
+    # Real mailbox, e.g. Gmail: smtp.gmail.com, port 587, STARTTLS, the address and a Google app password.
+    # Mail sent this way appears in that mailbox's Sent folder.
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = False
     approval_signing_secret: str = "change-me-approval-signing-secret"
     public_base_url: str = "http://127.0.0.1:8000"
     scheduling_token_hours: int = 72
