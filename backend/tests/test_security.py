@@ -4,12 +4,13 @@ import hmac
 import json
 import time
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from backend.config import get_settings
 from backend.data.db import engine
 from backend.data.models import Tenant, User
-from backend.security.gateway import hash_password
+from backend.orchestration import seed
+from backend.security.gateway import create_access_token, hash_password
 from backend.tests.conftest import login
 
 
@@ -18,9 +19,20 @@ def test_requires_auth(client):
     assert client.get("/jobs", headers={"Authorization": "Bearer forged.token.value"}).status_code == 401
 
 
-def test_viewer_is_read_only(client, viewer):
-    assert client.get("/jobs", headers=viewer).status_code == 200
-    assert client.post("/jobs", json={"title": "X job"}, headers=viewer).status_code == 403
+def test_removed_roles_are_refused_then_deleted(client):
+    """Viewer and employee accounts left in an older database: no login, no token, gone at the next start."""
+    with Session(engine) as s:
+        tid = s.exec(select(Tenant)).first().id
+        old = [User(tenant_id=tid, email=f"old.{role}@acme.test", role=role, hashed_password=hash_password("Old#2026!"))
+               for role in ("viewer", "employee")]
+        s.add_all(old)
+        s.commit()
+        token = create_access_token(old[0])
+    assert client.post("/auth/login", data={"username": "old.viewer@acme.test", "password": "Old#2026!"}).status_code == 401
+    assert client.get("/jobs", headers={"Authorization": f"Bearer {token}"}).status_code == 401
+    with Session(engine) as s:
+        seed.seed(s)  # runs at every start
+        assert {u.role for u in s.exec(select(User))} == {"admin", "recruiter", "manager"}
 
 
 def test_unknown_fields_rejected(client, recruiter):

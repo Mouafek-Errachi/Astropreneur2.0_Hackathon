@@ -116,12 +116,6 @@ def test_biased_weights_are_not_proposed(client, recruiter):
     assert r.status_code == 422 and "bias check" in r.json()["detail"]["message"]
 
 
-def test_viewer_cannot_learn_weights(client, viewer, recruiter):
-    job = _job(client, recruiter)
-    r = client.post(f"/jobs/{job['id']}/learn-weights", files={"file": ("h.csv", _csv(_hires()))}, headers=viewer)
-    assert r.status_code == 403
-
-
 @pytest.mark.parametrize("name, passes", [("past_hires_backend.csv", True), ("past_hires_biased.csv", False)])
 def test_demo_hires_files(name, passes):
     """The two files offered for download on the Screening page: one passes the bias check, one is blocked."""

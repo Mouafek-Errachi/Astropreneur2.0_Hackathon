@@ -139,10 +139,6 @@ class AskRequest(Strict):
     history: list[ChatTurn] = Field(default_factory=list, max_length=6)  # earlier turns, for follow-up questions
 
 
-class TicketCreate(Strict):
-    request_text: str = Field(min_length=10, max_length=3000)
-
-
 class BroadcastRequest(Strict):
     target_team: str = Field(pattern=r"^[a-z_]{2,40}$")
     message_prompt: str = Field(min_length=10, max_length=3000)
@@ -187,7 +183,7 @@ class GapDecision(Strict):
 class EmployeeSkillIn(Strict):
     skill: str = Field(min_length=1, max_length=60)
     level: int = Field(ge=1, le=4)
-    validated: bool = True  # only honoured for managers
+    validated: bool = True  # False records a skill a manager still has to confirm
 
 
 class EmployeeSkillsIn(Strict):

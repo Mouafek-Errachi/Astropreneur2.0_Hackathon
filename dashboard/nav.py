@@ -30,14 +30,12 @@ PAGES = [
     Entry("People", "pages/10_Project_Staffing.py", "Project staffing", "account_tree", "staffing", "projects:read",
           "What each project needs, where the team falls short, and how to close the gap."),
     Entry("People", "pages/7_HR_Ops.py", "HR operations", "support_agent", "hr-ops", "hr:read",
-          "Tickets, team broadcasts, recognition points and the interview co-pilot."),
+          "Group emails, team broadcasts, recognition points and the interview co-pilot."),
     Entry("People", "pages/6_Ask_HR.py", "Ask HR", "forum", "ask-hr", "qa:ask",
           "Your HR assistant: answers from the company's documents, with sources."),
     Entry("Security", "pages/8_AI_Firewall.py", "AI Firewall", "shield", "firewall", "security:read",
           "Every blocked file, injection and quarantine, plus the tamper-proof audit log."),
 ]
-MY_SKILLS = Entry("People", "pages/10_Project_Staffing.py", "My skills", "psychology", "my-skills", None,
-                  "Declare your skills; a manager validates them.")
 N8N = Entry("People", "pages/9_HR_Ops_via_n8n.py", "HR ops via n8n", "hub", "hr-ops-n8n", "hr:read",
             "The same HR features, served by the n8n workflow backend.")
 
@@ -45,8 +43,6 @@ N8N = Entry("People", "pages/9_HR_Ops_via_n8n.py", "HR ops via n8n", "hub", "hr-
 def visible_pages(me: dict) -> list[Entry]:
     """The pages this role can open, in menu order."""
     shown = [e for e in PAGES if e.scope is None or can(e.scope)]
-    if not can("projects:read") and me.get("employee_id"):  # employees only get their own skill profile
-        shown.append(MY_SKILLS)
     if n8n_configured() and can(N8N.scope):
         shown.append(N8N)
     return shown

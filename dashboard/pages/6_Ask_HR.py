@@ -41,7 +41,7 @@ def show_answer(msg: dict) -> None:
         st.info("Not covered by the company documents: the HR team has been told.", icon=":material/support_agent:")
 
 
-tabs = ["Chat", "Company documents"] + (["Send a request to HR"] if can("tickets:create") else [])
+tabs = ["Chat", "Company documents"]
 views = dict(zip(tabs, st.tabs(tabs)))
 
 with views["Chat"]:
@@ -107,14 +107,3 @@ with views["Company documents"]:
             if st.button("Re-index documents"):
                 if r := call("POST", "/qa/reindex"):
                     st.success(f"{r['chunks']} sections indexed")
-
-if "Send a request to HR" in views:
-    with views["Send a request to HR"], st.form("ticket", clear_on_submit=True):
-        st.caption("HR receives your request with a drafted answer. A person reviews it before anything is sent to you.")
-        text = st.text_area("Your request", placeholder="e.g. I need a certificate of employment for my visa appointment.")
-        if st.form_submit_button("Send request", type="primary", icon=":material/send:"):
-            if not text.strip():
-                st.warning("Write your request first.")
-            elif r := call("POST", "/hr/tickets", json={"request_text": text}):
-                st.success(f"{r['message']} (category: {r['category']}, priority: {r['priority']})",
-                           icon=":material/check_circle:")

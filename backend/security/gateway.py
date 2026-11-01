@@ -26,22 +26,19 @@ limiter = Limiter(key_func=get_remote_address, enabled=settings.rate_limit_enabl
                   default_limits=[settings.default_rate_limit])
 
 # ------------------------------------------------------------------ scopes
-EMPLOYEE_SCOPES = {"qa:ask", "tickets:create"}
-VIEWER_SCOPES = {"jobs:read", "emails:read", "approvals:read", "followups:read", "scheduling:read",
-                 "hr:read", "qa:ask", "security:read", "projects:read"}
-RECRUITER_SCOPES = VIEWER_SCOPES | {
+RECRUITER_SCOPES = {
+    "jobs:read", "emails:read", "approvals:read", "followups:read", "scheduling:read", "hr:read", "qa:ask",
+    "security:read", "projects:read",
     "jobs:write", "resumes:upload", "screening:run", "emails:ingest", "emails:process", "drafts:create",
     "approvals:decide", "followups:manage", "scheduling:manage", "hr:write", "interview:assist", "projects:write",
 }
 # Managers additionally see and validate individual employee skill levels (recruiters only see team totals).
 MANAGER_SCOPES = RECRUITER_SCOPES | {"skills:read", "skills:manage"}
 ADMIN_SCOPES = MANAGER_SCOPES | {"admin", "audit:read", "qa:admin"}
-ROLE_SCOPES = {"employee": EMPLOYEE_SCOPES, "viewer": VIEWER_SCOPES, "recruiter": RECRUITER_SCOPES,
-               "manager": MANAGER_SCOPES, "admin": ADMIN_SCOPES}
+ROLE_SCOPES = {"recruiter": RECRUITER_SCOPES, "manager": MANAGER_SCOPES, "admin": ADMIN_SCOPES}
 
 # Scopes a machine credential (e.g. the n8n API key) can NEVER hold: a human must decide.
-HUMAN_ONLY_SCOPES = {"approvals:decide", "admin", "audit:read", "qa:admin", "tickets:create", "skills:read",
-                     "skills:manage"}
+HUMAN_ONLY_SCOPES = {"approvals:decide", "admin", "audit:read", "qa:admin", "skills:read", "skills:manage"}
 API_KEY_ALLOWED_SCOPES = ADMIN_SCOPES - HUMAN_ONLY_SCOPES
 
 
@@ -53,7 +50,6 @@ class Principal:
     role: str
     scopes: set[str] = field(default_factory=set)
     user_id: Optional[uuid.UUID] = None
-    employee_id: Optional[str] = None
 
     @property
     def is_human(self) -> bool:
@@ -80,7 +76,7 @@ def authenticate_user(session: Session, email: str, password: str) -> Optional[U
     if not user:
         verify_password(password, _DUMMY_HASH)  # same timing whether or not the user exists
         return None
-    if not user.active or not verify_password(password, user.hashed_password):
+    if not user.active or user.role not in ROLE_SCOPES or not verify_password(password, user.hashed_password):
         return None
     return user
 
@@ -120,10 +116,10 @@ def get_principal(request: Request, creds: Optional[HTTPAuthorizationCredentials
             raise _UNAUTH
         user = session.get(User, uid)
         # Re-check the DB so disabled users / role changes apply immediately.
-        if data.get("typ") != "access" or not user or not user.active or user.tenant_id != data.get("tid"):
+        if (data.get("typ") != "access" or not user or not user.active or user.tenant_id != data.get("tid")
+                or user.role not in ROLE_SCOPES):
             raise _UNAUTH
-        return Principal("user", user.email, user.tenant_id, user.role, set(ROLE_SCOPES.get(user.role, set())),
-                         user.id, user.employee_id)
+        return Principal("user", user.email, user.tenant_id, user.role, set(ROLE_SCOPES[user.role]), user.id)
     if api_key := request.headers.get("X-API-Key"):
         parts = api_key.split("_")
         if len(parts) < 3 or parts[0] != "hrk":
