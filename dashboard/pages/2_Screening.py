@@ -1,6 +1,8 @@
 """Resume screening (Ghassen's page, on the 5-layer API): plain-language criteria, editable weights, decisions and
 emails from the table, compare, learned weights, plus the bias check, hidden-text warnings and candidate chat."""
+import io
 import json
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -196,31 +198,91 @@ def load_demo_button() -> None:
             st.rerun()
 
 
+SAMPLE_DIR = Path(__file__).resolve().parents[2] / "data" / "employees"
+SAMPLES = {"past_hires_backend.csv": "Fair history: the bias check passes",
+           "past_hires_biased.csv": "Biased history: the bias check blocks it"}
+WEIGHT_NAMES = {"required": "Required skills", "nice": "Nice to have", "experience": "Experience"}
+HIRE_COLUMNS = [
+    ("skills", "Skills the person had when hired, separated by ; (e.g. python; sql; docker)"),
+    ("years_experience", "Years of experience when hired"),
+    ("jira_done", "Jira tickets completed since"),
+    ("performance", "Last performance review, out of 100"),
+    ("group", "Optional, for the bias check only (e.g. A / B): never used to score anyone"),
+]
+
+
+def learning_report(rep: dict) -> None:
+    """What the learner found: how good the prediction is, the old and new weights, and the bias check by group."""
+    fair = rep["fairness"]
+    c = st.columns(3)
+    c[0].metric("Learned from", f"{rep['learned_from']} hires", border=True,
+                help=f"{rep['good_outcomes']} of them count as a good outcome (the better half).")
+    c[1].metric("Predicts who did well", f"{rep['accuracy']:.0%}", border=True,
+                delta=f"{100 * (rep['accuracy'] - rep['baseline_accuracy']):+.0f} pts vs guessing",
+                help=f"Always guessing the most common outcome would be right {rep['baseline_accuracy']:.0%} of the time.")
+    c[2].metric("Bias check", ("Passed" if fair["passed"] else "Failed") if fair["checked"] else "Not run", border=True,
+                help="Four-fifths rule: no group may be shortlisted at under 80% of the best group's rate.")
+    rows = [{"Criterion": WEIGHT_NAMES.get(k, k), "Now": rep["previous_weights"][k], "Learned": rep["weights"][k],
+             "Change": f"{rep['weights'][k] - rep['previous_weights'][k]:+d}"} for k in WEIGHT_NAMES]
+    st.dataframe(rows, hide_index=True, width="stretch", column_config={
+        "Now": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%d%%"),
+        "Learned": st.column_config.ProgressColumn(min_value=0, max_value=100, format="%d%%")})
+    rule = rep["outcome_rule"]
+    st.caption(f"A hire did well when their success ({rule['performance_share']}% performance review + "
+               f"{rule['jira_share']}% Jira tickets, ranked among colleagues) was at least "
+               f"{rule['good_if_success_at_least']} out of 100.")
+    if fair["checked"]:
+        st.markdown("**Shortlisted (score 70 or more), by group**")
+        st.dataframe([{"Group": g, "People": v["n"], "With the current weights": f"{v['before']:.0%}",
+                       "With the learned weights": f"{v['after']:.0%}"} for g, v in fair["rates"].items()],
+                     hide_index=True, width="stretch")
+        st.caption(f"Lowest group rate ÷ highest: {fair['impact_ratio_before']} now → {fair['impact_ratio']} learned "
+                   "(must stay at 0.8 or more).")
+    else:
+        st.warning(f"No bias check. {fair['reason']}.", icon=":material/gpp_maybe:")
+
+
 def learn_weights(job: dict) -> None:
-    st.caption("CSV with one row per past hire: `skills` (at hiring time), `years_experience` (at hiring time), "
-               "`jira_done` (Jira tickets completed), `performance` (review score out of 100), and optionally `group`, "
-               "used only for the bias check. Any other column is refused. The rows are not stored; the learned "
-               "weights go to the approval queue and someone else approves them. Sample: "
-               "data/employees/backend_engineer_hires.csv")
+    st.markdown("**Let your past hires set the weights.** Upload one row per person you hired for this kind of job: "
+                "the system finds which criteria predicted who did well, and proposes new weights. Someone else "
+                "approves them before the ranking changes. The rows are not stored.")
+    st.caption("Current weights: " + " · ".join(f"{WEIGHT_NAMES[k]} {v}%" for k, v in job["criteria"]["weights"].items()
+                                                 if k in WEIGHT_NAMES))
+    with st.expander("What the file must contain, and sample files", icon=":material/table:"):
+        st.markdown("\n".join(f"- `{c}`: {d}" for c, d in HIRE_COLUMNS)
+                    + "\n\nAny other column (name, age, gender…) is refused, so no personal data reaches the model. "
+                      "At least 30 rows.")
+        cols = st.columns(len(SAMPLES))
+        for col, (name, what) in zip(cols, SAMPLES.items()):
+            if (SAMPLE_DIR / name).exists():
+                col.download_button(name, (SAMPLE_DIR / name).read_bytes(), file_name=name, mime="text/csv",
+                                    icon=":material/download:", help=what, width="stretch")
+                col.caption(what)
     hires = st.file_uploader("Past hires (CSV)", type="csv", key=f"hires{job['id']}")
-    if hires and st.button("Learn weights", type="primary", disabled=not can("jobs:write")):
-        r = call("POST", f"/jobs/{job['id']}/learn-weights", files={"file": (hires.name, hires.getvalue())})
-        if r:
-            rep, fair = r["report"], r["report"]["fairness"]
-            st.success("Proposed in the approval queue: someone else must approve it.")
-            st.table(pd.DataFrame({"Before": rep["previous_weights"], "Learned": rep["weights"]}))
-            rule = rep["outcome_rule"]
-            st.write(f"Success = {rule['performance_share']}% performance + {rule['jira_share']}% Jira tickets done "
-                     f"(ranked among colleagues). The better half, success {rule['good_if_success_at_least']} or more, "
-                     "counts as a good outcome.")
-            st.write(f"Learned from {rep['learned_from']} hires. The model predicts the outcome right "
-                     f"{rep['accuracy']:.0%} of the time, vs {rep['baseline_accuracy']:.0%} by always guessing "
-                     "the most common outcome.")
-            if fair["checked"]:
-                st.write(f"Bias check passed: impact ratio {fair['impact_ratio']} (four-fifths rule needs 0.8 or more).")
-                st.table(pd.DataFrame(fair["rates"]).T)
-            else:
-                st.warning(f"No bias check. {fair['reason']}.")
+    if hires:
+        try:
+            preview = pd.read_csv(io.BytesIO(hires.getvalue()))
+            st.caption(f"{len(preview)} hires · columns: {', '.join(map(str, preview.columns))}")
+            st.dataframe(preview.head(5), hide_index=True, width="stretch")
+        except (ValueError, UnicodeDecodeError):
+            st.warning("This file could not be read as a CSV.")
+    result_key = f"learned{job['id']}"
+    if st.button("Learn the weights", type="primary", icon=":material/model_training:",
+                 disabled=not (hires and can("jobs:write"))):
+        with st.spinner("Learning from your past hires..."):
+            st.session_state[result_key] = call("POST", f"/jobs/{job['id']}/learn-weights", refused="return",
+                                                files={"file": (hires.name, hires.getvalue())})
+    if not (r := st.session_state.get(result_key)):
+        return
+    if "refused" in r:
+        st.error(esc(r["refused"]), icon=":material/block:")
+        if isinstance(r["detail"], dict) and r["detail"].get("report"):
+            learning_report(r["detail"]["report"])
+        return
+    st.success("New weights proposed. They wait in Approvals: someone else must approve them before the ranking "
+               "changes.", icon=":material/fact_check:")
+    st.page_link("pages/3_Approvals.py", label="Open Approvals", icon=":material/arrow_forward:")
+    learning_report(r["report"])
 
 
 if "demo_result" in st.session_state:

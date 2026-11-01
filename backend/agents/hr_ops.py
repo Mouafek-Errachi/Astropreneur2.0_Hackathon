@@ -1,7 +1,9 @@
 """HR operations agents ported from the n8n workflows (n8n/workflows/api-*.json):
 interview co-pilot, team broadcast writer and helpdesk ticket triage. Prompts follow the n8n versions."""
+import re
+
 from backend.agents.llm import complete_json
-from backend.agents.schemas import BroadcastDraft, InterviewAssist, TicketTriage
+from backend.agents.schemas import AudienceRequest, BroadcastDraft, InterviewAssist, TicketTriage
 
 INTERVIEW_TASK = (
     "You are a real-time interview co-pilot for a human interviewer. You never speak to the candidate and never "
@@ -15,6 +17,13 @@ BROADCAST_TASK = (
     "fact exactly; never add facts, figures, dates, links or promises that are not in the notes. If something "
     "essential is missing, put a placeholder like [DATE] in the body and list it in missing_info. Subject max 70 "
     "characters, body 60-220 words, plain text."
+)
+AUDIENCE_TASK = (
+    "An HR user asks to email a group of employees. Split the request into WHO and WHAT. WHO: pick job titles, teams "
+    "and skills only from the lists given (exact spelling, plural or synonym mapped to the listed value); leave a "
+    "list empty when the request does not name one. Skills narrow the group down, so use them only when the request "
+    "says so (e.g. 'engineers who know Kubernetes'). WHAT: the message itself, without the 'send to ...' part, with "
+    "every fact kept exactly. Never invent recipients, addresses or facts."
 )
 TICKET_TASK = (
     "You are an HR helpdesk assistant. Classify the employee request and draft a reply for HR staff to review, "
@@ -51,7 +60,31 @@ def write_broadcast(team_name: str, tone_guide: str, notes: str) -> tuple[Broadc
                 "key_points": [l.strip("-• ").strip()[:200] for l in notes.splitlines() if l.strip()][:12]}
 
     return complete_json(BROADCAST_TASK, BroadcastDraft, mock, untrusted=notes, source="hr_draft",
-                         trusted_context=f"TEAM: {team_name}\nTONE GUIDE: {tone_guide}")
+                         trusted_context=f"TEAM: {team_name}\nTONE GUIDE: {tone_guide}", writer=True)
+
+
+def read_audience(request: str, job_titles: list[str], teams: dict[str, str],
+                  skills: list[str]) -> tuple[AudienceRequest, bool]:
+    """teams: id -> display name. The caller keeps only values from these lists, whatever the model returns."""
+    def mock() -> dict:
+        t = f" {request.lower()} "
+
+        def named(*words: str) -> bool:  # "backend engineer" also matches "backend engineers"
+            return any(re.search(rf"\b{re.escape(w.lower())}s?\b", t) for w in words if w)
+
+        message = re.sub(r"^\s*(please\s+)?(send|email|write|tell|inform|notify|remind)\b.*?\b(that|about|:)\s+", "",
+                         request.strip(), count=1, flags=re.I | re.S)
+        titles = [j for j in job_titles if named(j)]
+        for j in titles:  # "operations interns" is a job title, not the whole operations team
+            t = re.sub(rf"\b{re.escape(j.lower())}s?\b", " ", t)
+        return {"job_titles": titles,
+                "teams": [tid for tid, name in teams.items() if named(tid.replace("_", " "), name)],
+                "skills": [s for s in skills if re.search(rf"\b(know|knows|with|using)\s+{re.escape(s)}\b", t)],
+                "message": message or request.strip()}
+
+    ctx = (f"JOB TITLES: {', '.join(job_titles)}\nTEAMS: {', '.join(f'{k} ({v})' for k, v in teams.items())}\n"
+           f"SKILLS: {', '.join(skills)}")
+    return complete_json(AUDIENCE_TASK, AudienceRequest, mock, untrusted=request, source="hr_draft", trusted_context=ctx)
 
 
 def triage_ticket(request_text: str, employee_context: str, policy_context: str, top_label: str) -> tuple[TicketTriage, bool]:

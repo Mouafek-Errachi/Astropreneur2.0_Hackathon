@@ -7,11 +7,14 @@ from fastapi import HTTPException
 from sqlmodel import Session, func, select
 
 from backend.agents import hr_ops, policy_rag
-from backend.data.models import Employee, PointsLedger, PointsRule, ProposedAction, Team, Ticket, utcnow
+from backend.data.models import (Employee, EmployeeSkill, PointsLedger, PointsRule, ProposedAction, Team, Ticket,
+                                 utcnow)
 from backend.orchestration import workflow
 from backend.security.guard import inspect_text
 
 BADGES = [(200, "Gold"), (100, "Silver"), (50, "Bronze")]
+FORMAL_TONE = ("Formal business email: courteous greeting ('Dear colleagues,'), complete sentences, short clear "
+               "paragraphs, no slang or abbreviations, exact dates and times, polite closing signed 'HR Team'.")
 
 
 def propose_broadcast(session: Session, tenant_id: int, team_id: str, notes: str, requested_by: str) -> ProposedAction:
@@ -29,6 +32,65 @@ def propose_broadcast(session: Session, tenant_id: int, team_id: str, notes: str
                  "_source_text": g.clean, "_fact_check": True},  # flags invented numbers / links
         rationale="Rewritten for the team tone" + (" (fallback)" if fallback else ""), input_risk=g.risk_level,
         input_flags=flags, created_by_agent="broadcast_writer", requested_by=requested_by, source_type="broadcast")
+
+
+def _audience(session: Session, tenant_id: int, titles: set[str], teams: set[str], skills: set[str]) -> list[Employee]:
+    """Recipients chosen in code: active employees with one of the job titles or in one of the teams, narrowed to
+    those with one of the skills if skills are given. The AI never picks an address. Self-declared skills count
+    here (unlike staffing coverage): this only addresses an email, and HR sees the list before it is sent."""
+    emps = session.exec(select(Employee).where(Employee.tenant_id == tenant_id, Employee.active == True)).all()  # noqa: E712
+    if titles or teams:
+        emps = [e for e in emps if e.job_title.lower() in titles or e.team_id in teams]
+    if skills:
+        known = {s.employee_id for s in session.exec(select(EmployeeSkill).where(
+            EmployeeSkill.tenant_id == tenant_id, EmployeeSkill.skill.in_(skills)))}
+        emps = [e for e in emps if e.id in known]
+    return sorted(emps, key=lambda e: (e.first_name, e.id))
+
+
+def _plural(title: str) -> str:
+    return title if title.endswith("s") else f"{title}s"
+
+
+def propose_group_email(session: Session, tenant_id: int, request: str, requested_by: str) -> ProposedAction:
+    """'Send to all backend engineers that the meeting is tomorrow at 18:00': the AI reads who and what, the code
+    finds the people, the AI writes the email, and a second person approves it before anyone receives it."""
+    g = inspect_text(session, request, source="group_email", tenant_id=tenant_id, max_chars=3000)
+    all_emps = session.exec(select(Employee).where(Employee.tenant_id == tenant_id)).all()
+    titles = sorted({e.job_title for e in all_emps if e.job_title})
+    teams = {t.id: t.display_name for t in session.exec(select(Team).where(Team.tenant_id == tenant_id))}
+    skills = sorted({s.skill for s in session.exec(select(EmployeeSkill).where(EmployeeSkill.tenant_id == tenant_id))})
+    aud, fallback = hr_ops.read_audience(g.clean, titles, teams, skills)
+    # Only values from the lists count: a model cannot widen the audience with a made-up group.
+    by_lower = {t.lower(): t for t in titles}
+    picked_titles = {t.lower() for t in aud.job_titles if t.lower() in by_lower}
+    picked_teams = {t for t in aud.teams if t in teams}
+    picked_skills = {s.lower() for s in aud.skills if s.lower() in skills}
+    if not (picked_titles or picked_teams or picked_skills):
+        raise HTTPException(422, "NO_AUDIENCE: say who should receive it, with a job title, a team or a skill "
+                                 f"(job titles: {', '.join(titles)}; teams: {', '.join(teams.values())})")
+    people = _audience(session, tenant_id, picked_titles, picked_teams, picked_skills)
+    label = " and ".join([_plural(by_lower[t]) for t in sorted(picked_titles)]
+                         + [f"the {teams[t]} team" for t in sorted(picked_teams)]) or "Everyone"
+    if picked_skills:
+        label += f" with {', '.join(sorted(picked_skills))}"
+    if not people:
+        raise HTTPException(422, f"EMPTY_AUDIENCE: no active employee matches {label}")
+    draft, fb2 = hr_ops.write_broadcast(label, FORMAL_TONE, aud.message or g.clean)
+    flags = [f.to_dict() for f in g.flags]
+    if aud.injection_attempt_observed or draft.injection_attempt_observed:
+        flags.append({"type": "model_observed_injection", "severity": "medium", "snippet": ""})
+    recipients = [{"id": e.id, "name": f"{e.first_name} {e.last_initial}.", "email": e.email,
+                   "job_title": e.job_title, "team": e.team_id} for e in people]
+    return workflow.propose(
+        session, tenant_id=tenant_id, type="group_email", title=f"Email to {label} ({len(people)})",
+        payload={"to": f"{len(people)} people: {label}", "audience": label, "recipients": recipients,
+                 "subject": draft.subject, "body": draft.body, "missing_info": draft.missing_info,
+                 "_source_text": g.clean, "_fact_check": True},  # flags figures and links not in the request
+        rationale="Recipients found by job title, team or skill; AI-written message"
+                  + (" (fallback)" if fallback or fb2 else ""),
+        input_risk=g.risk_level, input_flags=flags, created_by_agent="group_email_writer", requested_by=requested_by,
+        source_type="group_email")
 
 
 def create_ticket(session: Session, tenant_id: int, employee_id: str, text: str, requested_by: str) -> Ticket:

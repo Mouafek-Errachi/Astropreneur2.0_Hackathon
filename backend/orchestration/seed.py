@@ -23,6 +23,15 @@ def _csv(name: str) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+def _job_titles() -> dict[str, str]:
+    """Kept apart from the n8n hr_employees.csv, whose columns the n8n data tables expect."""
+    path = get_settings().data_dir / "employees" / "employee_titles.csv"
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8", newline="") as f:
+        return {r["employee_id"]: r["job_title"].strip() for r in csv.DictReader(f)}
+
+
 def _bool(v: str) -> bool:
     return str(v).strip().lower() == "true"
 
@@ -48,10 +57,12 @@ def seed(session: Session) -> None:
         session.add(Team(id=t["team_id"], tenant_id=tid, display_name=t["display_name"], member_count=int(t["member_count"]),
                          mailing_list=t["mailing_list"], tone_guide=t["tone_guide"]))
     session.commit()
+    titles = _job_titles()
     for e in _csv("hr_employees"):  # portal_token is not imported: employees log in with a password here
         session.add(Employee(id=e["employee_id"], tenant_id=tid, first_name=e["first_name"], last_initial=e["last_initial"],
-                             team_id=e["team_id"], email=e["email"], leave_balance_days=float(e["leave_balance_days"]),
-                             contract_type=e["contract_type"], active=_bool(e["active"])))
+                             team_id=e["team_id"], email=e["email"], job_title=titles.get(e["employee_id"], ""),
+                             leave_balance_days=float(e["leave_balance_days"]), contract_type=e["contract_type"],
+                             active=_bool(e["active"])))
     for r in _csv("hr_points_rules"):
         session.add(PointsRule(action_type=r["action_type"], tenant_id=tid, points=int(r["points"]), daily_cap=int(r["daily_cap"])))
     session.commit()

@@ -171,3 +171,43 @@ def test_grok_is_used_as_fallback_when_gemini_fails(gemini_live, monkeypatch):
                                                  "grok_api_key"))
     profile, fallback = llm.complete_json("Extract.", CandidateProfile, MOCK, untrusted="text")
     assert not fallback and profile.name == "From Grok" and len(asked) == 1
+
+
+@pytest.fixture
+def writer_setup(monkeypatch):
+    """Gemini as the main provider, Grok as WRITER_LLM_PROVIDER, both faked: records who answered."""
+    s = get_settings()
+    for k, v in {"llm_provider": "gemini", "llm_fallback_provider": "", "writer_llm_provider": "grok",
+                 "gemini_api_key": "g-key", "grok_api_key": "x-key", "llm_max_retries": 0}.items():
+        monkeypatch.setattr(s, k, v)
+    used = []
+
+    def fake(name):
+        def ask(prompt, schema):
+            used.append(name)
+            return json.dumps({"name": name})
+        return ask
+    monkeypatch.setitem(llm.PROVIDERS, "gemini", (fake("gemini"), "gemini_api_key"))
+    monkeypatch.setitem(llm.PROVIDERS, "grok", (fake("grok"), "grok_api_key"))
+    return s, used
+
+
+def test_writing_goes_to_the_writer_provider(writer_setup):
+    _, used = writer_setup
+    assert llm.complete_json("t", CandidateProfile, MOCK, writer=True)[0].name == "grok"
+    assert llm.complete_json("t", CandidateProfile, MOCK)[0].name == "gemini"  # reading resumes etc. is unchanged
+    assert used == ["grok", "gemini"]
+
+
+def test_writer_without_a_key_falls_back_to_the_main_provider(writer_setup, monkeypatch):
+    s, used = writer_setup
+    monkeypatch.setattr(s, "grok_api_key", "")
+    out, fallback = llm.complete_json("t", CandidateProfile, MOCK, writer=True)
+    assert (out.name, fallback, used) == ("gemini", False, ["gemini"])
+
+
+def test_writer_works_while_the_main_provider_is_mock(writer_setup, monkeypatch):
+    s, _ = writer_setup
+    monkeypatch.setattr(s, "llm_provider", "mock")
+    assert llm.complete_json("t", CandidateProfile, MOCK, writer=True)[0].name == "grok"
+    assert llm.complete_json("t", CandidateProfile, MOCK)[0].name == "fallback"

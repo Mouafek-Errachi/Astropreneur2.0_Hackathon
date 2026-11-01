@@ -1,0 +1,81 @@
+skills,years_experience,jira_done,performance,group
+fastapi; docker; python; sql; kubernetes,0,78,79,B
+sql; fastapi; python; aws,0,87,81,A
+sql; kubernetes; linux; go; python; docker,1,46,62,B
+kubernetes; fastapi; aws; sql,1,36,63,A
+docker; excel; kubernetes; python,2,51,55,B
+aws; sql; docker; kubernetes; python; excel,2,127,81,A
+aws; python; git; docker,3,120,84,B
+sql; redis; docker; kubernetes; aws,3,24,40,A
+python; docker; kubernetes; sql,4,110,76,B
+docker; sql; python; redis; excel; aws,4,77,78,A
+sql; kubernetes; fastapi; docker; python; aws,5,96,91,B
+python; kubernetes; sql; excel,5,83,95,A
+aws; sql; fastapi; python; react; linux,6,20,51,B
+fastapi; python; linux; redis; docker,6,133,83,A
+python; aws; excel,8,38,40,B
+python; sql; docker; fastapi,8,80,93,A
+docker; python; sql; react; fastapi; git,0,25,43,B
+sql; go; python; docker,0,83,88,A
+sql; python; kubernetes; fastapi,1,35,51,B
+redis; python; excel; docker,1,16,63,A
+fastapi; sql; aws,2,136,88,B
+docker; python; aws; kubernetes,2,19,63,A
+redis; python; aws; fastapi; docker,3,23,61,B
+fastapi; aws; python; docker; sql,3,129,79,A
+excel; sql; python; redis; fastapi; kubernetes,4,116,72,B
+fastapi; docker; kubernetes; sql; python,4,75,96,A
+python; linux,5,20,52,B
+docker; fastapi; python; sql; git,5,128,72,A
+fastapi; sql; aws; python,6,95,81,B
+sql; kubernetes; python; docker,6,134,89,A
+sql; docker; excel; redis,8,99,82,B
+docker; fastapi; python,8,102,85,A
+python; sql; kubernetes,0,93,77,B
+kubernetes; python; fastapi; sql; docker,0,118,74,A
+kubernetes; python; docker; aws; sql,1,108,81,B
+aws; python; react; sql; excel,1,135,92,A
+sql; python; docker,2,75,76,B
+go; linux; docker; python; aws; kubernetes,2,47,40,A
+aws; sql; docker; kubernetes; python; linux; fastapi; go,3,95,74,B
+sql; python; git; docker; kubernetes,3,132,81,A
+docker; sql; python; git,4,134,86,B
+sql; redis; react; aws; kubernetes,4,60,58,A
+python; excel; aws; docker; fastapi,5,85,82,B
+go; fastapi; python; react,5,79,83,A
+fastapi; go; aws; linux,6,117,85,B
+docker; git; go,6,87,92,A
+sql; react; aws,8,100,81,B
+python; docker; redis; aws; sql,8,140,78,A
+aws; docker; sql; fastapi; python,0,28,59,B
+go; docker; linux; aws; python,0,43,62,A
+redis; fastapi; aws,1,137,86,B
+docker; fastapi; go; excel; sql,1,74,92,A
+docker; python,2,94,84,B
+kubernetes; python; go; docker,2,73,85,A
+docker; python; sql; linux,3,113,94,B
+docker; python; sql,3,94,79,A
+python; fastapi; sql,4,18,44,B
+sql; docker,4,110,95,A
+python; git; sql; fastapi; docker,5,83,72,B
+react; python; sql; docker,5,130,78,A
+fastapi; linux; docker; python; kubernetes,6,77,80,B
+python; fastapi; sql; aws; docker,6,78,72,A
+excel; docker; sql,8,108,94,B
+fastapi; sql; aws; docker,8,78,92,A
+sql; docker; redis; python,0,127,77,B
+python; sql; git; react; docker,0,103,78,A
+sql; kubernetes; python; docker; fastapi,1,21,64,B
+sql; docker,1,76,78,A
+docker; kubernetes; git; fastapi; react; python,2,88,73,B
+python; aws; kubernetes; sql; docker; excel,2,74,87,A
+python; docker; fastapi; sql,3,106,93,B
+python; aws; go; docker,3,70,85,A
+sql,4,76,89,B
+docker; python,4,90,88,A
+linux; docker; sql; python,5,119,74,B
+kubernetes; sql; redis; fastapi,5,75,84,A
+docker; fastapi; sql,6,111,75,B
+python; kubernetes; sql,6,127,88,A
+sql; docker; python; linux; aws,8,125,83,B
+sql; react; docker; fastapi; kubernetes; redis; python,8,78,91,A

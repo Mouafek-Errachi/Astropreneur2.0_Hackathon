@@ -1,6 +1,7 @@
 """The ONLY place that talks to an LLM.
 
-LLM_PROVIDER = mock | gemini | grok, plus an optional LLM_FALLBACK_PROVIDER.
+LLM_PROVIDER = mock | gemini | grok, plus an optional LLM_FALLBACK_PROVIDER. WRITER_LLM_PROVIDER (optional) writes
+the emails drafted from HR notes, e.g. grok for the writing while gemini reads the resumes.
 Agents get no tools: they return JSON that is validated against a strict Pydantic schema
 (retry on invalid output, then fall back to a deterministic mock so a batch never breaks).
 
@@ -172,12 +173,15 @@ def _ready(provider: str) -> bool:
 
 
 def complete_json(task: str, schema: type[T], mock: Callable[[], dict], *, untrusted: str = "",
-                  source: str = "document", trusted_context: str = "") -> tuple[T, bool]:
-    """Returns (validated_output, used_fallback)."""
+                  source: str = "document", trusted_context: str = "", writer: bool = False) -> tuple[T, bool]:
+    """Returns (validated_output, used_fallback). writer=True: an email written from HR notes, sent to
+    WRITER_LLM_PROVIDER first when it is set; the main provider and its fallback stay as backups."""
     s = get_settings()
-    if s.llm_provider == "mock":
+    first = s.writer_llm_provider if writer and s.writer_llm_provider else s.llm_provider
+    if first == "mock":
         return schema.model_validate(mock()), False
-    chain = [p for p in dict.fromkeys((s.llm_provider, s.llm_fallback_provider)) if p and _ready(p)]
+    chain = [p for p in dict.fromkeys((first, s.llm_provider, s.llm_fallback_provider))
+             if p and p != "mock" and _ready(p)]
     prompt = _prompt(task, trusted_context, untrusted, source, schema)
     for provider in chain:
         ask = PROVIDERS[provider][0]

@@ -41,6 +41,7 @@ Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bott
 | Interview scheduling | Free slots from the interviewer calendar. At approval, either book a slot now, or send the candidate a single-use link to pick one. A booked slot is never offered twice. | Scheduling and Approvals pages, `/public/schedule/{token}` |
 | Employee questions | Answers from policy documents only, with sources; anything else is escalated. Employees can open tickets; the drafted reply waits for HR. | Ask HR page, `/qa/ask`, `/hr/tickets` |
 | HR operations | Interview co-pilot (probing questions when an answer is vague), team broadcasts with a fact check, recognition points and leaderboard. | HR operations page; the n8n versions on "HR ops via n8n" (in the menu once `N8N_BASE_URL` is set) |
+| Group emails | HR writes "send to all backend engineers that the meeting is tomorrow at 18:00": the AI reads who and what, the code finds the active employees by job title, team or skill (the AI never picks an address), and the AI writes the email. A second person checks the recipient list (people can be removed, not added) and the message, then each person gets their own copy. | HR operations page, "Email a group" tab, `POST /hr/group-email` |
 | Project staffing & skill gaps | Upload a project charter and dependency manifests; the AI extracts the skills the project needs (a person confirms them); the gaps against the team's validated skills and free capacity are computed in code (missing, level too low, not enough capacity); internal options (upskill, rebalance, validate a declared skill, related skill) come first; for a gap marked "hire externally" the AI drafts a job description (checked for invented pay, links, exclusionary wording, employee names), and a second person approves it into a job that screening can rank against. Spec: [docs/specs/project-staffing-gap-analysis.md](docs/specs/project-staffing-gap-analysis.md) | Project Staffing page, `/projects`, `/skills/matrix`, `/employees/{id}/skills` |
 | Security visibility | Every blocked file, injection, hidden text and quarantine in one place, plus the hash-chained audit log. | AI Firewall page |
 
@@ -54,6 +55,12 @@ Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bott
 6. **Scheduling:** propose slots, approve with "let the candidate choose", open the link from the sent email, pick a slot; the link then stops working.
 7. **Project staffing:** open "Payments API migration", review the AI's draft requirements and confirm them: gaps appear (Python short on capacity, PostgreSQL level too low, Kubernetes missing). Mark Kubernetes "hire externally", draft the job description, and approve it as the manager: a new job appears on Screening. Show the mobile-app charter flagged for its planted injection, with gaps unchanged.
 8. **Ask HR:** "How many days can I work remotely?" (answered with a source), then a question outside the policies (escalated).
+
+## Interview Copilot (browser extension)
+
+[interview-copilot/](interview-copilot/) holds the live interview co-pilot: a Chrome extension (`extension/`) and its own
+FastAPI backend (`backend/`, separate virtualenv and `.env`). Its README explains the setup; run
+`backend/download_whisper.py` to fetch the local speech-to-text model, which is not stored in git.
 
 ## Architecture
 
@@ -150,6 +157,22 @@ to a local catcher (nothing reaches real inboxes; the demo addresses are fiction
 Then add `SMTP_HOST=127.0.0.1` and `SMTP_PORT=1025` to `.env`, restart `run.py`, and approve an email: it is printed in
 the catcher's terminal and shows `transport: smtp` in Sent emails. With Docker, `docker compose --profile mail` runs
 MailHog instead (web inbox on http://localhost:8025).
+
+To send from a real Gmail account, so each approved email also appears in that account's **Sent** folder, turn on
+2-Step Verification, create an app password (Google Account > Security > App passwords) and set in `.env`:
+
+```
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_STARTTLS=true
+SMTP_USER=you@gmail.com
+SMTP_FROM=you@gmail.com
+SMTP_PASSWORD=the 16-letter app password
+```
+
+The demo employees and candidates have fictional addresses (`@hr-demo.test`, `@example.com`): Gmail accepts the send
+and keeps it in Sent, then the delivery fails and Gmail notifies you. To receive one yourself, upload a resume that
+contains your own address, then draft its acknowledgement email from the Screening table and approve it.
 
 ## Tests
 

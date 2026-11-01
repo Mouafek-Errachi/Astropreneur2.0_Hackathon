@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # L3 agents: LLM provider = mock | gemini | grok, with an optional fallback provider
     llm_provider: str = "mock"
     llm_fallback_provider: str = ""
+    writer_llm_provider: str = ""  # writes emails from HR notes (broadcasts, group emails); empty = LLM_PROVIDER
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"  # fast and accurate enough for extraction and drafting
     # Used in turn when a model is rate-limited or overloaded. Free-tier quotas are per model, so a pool adds up.
@@ -70,6 +71,11 @@ class Settings(BaseSettings):
     smtp_host: str = ""
     smtp_port: int = 1025
     smtp_from: str = "hr@acme.test"
+    # Real mailbox, e.g. Gmail: smtp.gmail.com, port 587, STARTTLS, the address and a Google app password.
+    # Mail sent this way appears in that mailbox's Sent folder.
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = False
     approval_signing_secret: str = "change-me-approval-signing-secret"
     public_base_url: str = "http://127.0.0.1:8000"
     scheduling_token_hours: int = 72

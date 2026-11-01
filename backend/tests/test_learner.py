@@ -120,3 +120,13 @@ def test_viewer_cannot_learn_weights(client, viewer, recruiter):
     job = _job(client, recruiter)
     r = client.post(f"/jobs/{job['id']}/learn-weights", files={"file": ("h.csv", _csv(_hires()))}, headers=viewer)
     assert r.status_code == 403
+
+
+@pytest.mark.parametrize("name, passes", [("past_hires_backend.csv", True), ("past_hires_biased.csv", False)])
+def test_demo_hires_files(name, passes):
+    """The two files offered for download on the Screening page: one passes the bias check, one is blocked."""
+    rep = learn(read_csv((DATA / "employees" / name).read_bytes(), ["python", "sql", "docker"],
+                         ["fastapi", "aws", "kubernetes"], 3), {"required": 60, "nice": 15, "experience": 25})
+    assert rep["fairness"]["passed"] is passes
+    assert rep["accuracy"] > rep["baseline_accuracy"]
+    assert rep["weights"]["experience"] > 25  # these histories reward experience more than the current weights do

@@ -1,0 +1,7 @@
+# Secrets, local data and large downloads stay on the machine
+backend/.env
+backend/*.db
+backend/models/
+backend/.venv/
+.pytest_cache/
+__pycache__/
