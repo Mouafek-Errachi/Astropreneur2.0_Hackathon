@@ -7,6 +7,13 @@ import streamlit as st
 CSS = """
 <style>
 [data-testid="stHeaderActionElements"] { display: none; }  /* the chain icon next to every heading */
+[data-testid="stMainBlockContainer"] { padding-top: 2.75rem; }  /* the default leaves a large empty band on top */
+.hr-me { display: flex; gap: .7rem; align-items: center; }
+.hr-me .avatar { flex: none; width: 2.3rem; height: 2.3rem; border-radius: 50%; display: flex; align-items: center;
+                 justify-content: center; font-weight: 700; color: #fff; background: #4f46e5; }
+.hr-me .who { min-width: 0; line-height: 1.25; }
+.hr-me .who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hr-me .who span { font-size: .82rem; opacity: .7; }
 </style>
 """
 

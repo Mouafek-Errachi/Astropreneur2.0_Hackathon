@@ -113,7 +113,7 @@ def row_meta(c: dict, pending_decision: dict, pending_email: set) -> dict:
     """What the Decision and Email cells show for one candidate, and why an action is refused."""
     name, aid = c["name"] or c["filename"], c["application_id"]
     if aid in pending_decision:
-        decision, state = pending_decision[aid], "⏳ waiting for approval"
+        decision, state = pending_decision[aid], "⏳ pending"
     elif c["status"] in DECISIONS:
         decision, state = c["status"], "✅ approved"
     else:
@@ -428,7 +428,8 @@ if not ranking:
 else:
     head = st.empty()  # the title shows the count, known once the filters below are read
     f1, f2, f3 = st.columns([2, 2, 1], vertical_alignment="bottom")
-    min_score = f1.slider("Show scores from", 0, 100, 0, 5)
+    min_score = f1.segmented_control("Score", [0, 50, 70, 85], default=0, required=True,
+                                     format_func=lambda v: "Any" if v == 0 else f"{v}+")
     all_required = f2.checkbox("Only candidates with every required skill")
     hide_rejected = f3.checkbox("Hide rejected")
     shown = [c for c in ranking
@@ -475,13 +476,11 @@ else:
         "Score": c["score"],
         "⚠️": "⚠️" if risky(c) else "",
         "Decision": m["decision"],
-        "Decision status": m["state"],
+        "Status": m["state"],
         "Email": m["email_label"],
+        "Why": why(c),  # says which required skills match and which are missing
         "Years": c["score_breakdown"].get("years_experience"),
-        "Required skills": ", ".join(c["score_breakdown"].get("required_matched", [])),
-        "Missing": ", ".join(c["score_breakdown"].get("required_missing", [])),
         "Source": SOURCE_BADGE.get(c.get("source", "upload"), c.get("source", "upload")),
-        "Why": why(c),
     } for c, m in zip(shown, meta)])
     editor_key = f"editor{job['id']}_{st.session_state.get('editor_rev', 0)}"
     email_key, view_key = f"email{job['id']}", f"view{job['id']}"
@@ -491,7 +490,7 @@ else:
         on_change=on_table_edit, args=(editor_key, meta, picked_key),
         column_config={
             "Compare": st.column_config.CheckboxColumn(
-                width="small", pinned=True, help="Tick two or more candidates, then click Compare above the table."),
+                width=90, pinned=True, help="Tick two or more candidates, then click Compare above the table."),
             "Rank": st.column_config.NumberColumn(width="small", pinned=True),
             "Candidate": st.column_config.TextColumn(pinned=True),
             "Source": st.column_config.TextColumn(width="small", help="Where the CV came from (see the Sources page)."),
@@ -499,8 +498,10 @@ else:
             "Years": st.column_config.NumberColumn(width="small", format="%g"),
             "Why": st.column_config.TextColumn(width="large"),
             "⚠️": st.column_config.TextColumn(width="small"),
+            "Status": st.column_config.TextColumn(
+                width=110, help="⏳ pending: waiting for someone else to approve. ✅ approved: recorded."),
             "Decision": st.column_config.SelectboxColumn(
-                options=DECISIONS, width="medium",
+                options=DECISIONS, width=130,
                 help="Proposes a decision. It is recorded only after someone else approves it."),
             "Email": st.column_config.ButtonColumn(
                 width="medium", key=email_key, on_click=on_row_button, args=(email_key, "draft", meta),
