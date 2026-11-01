@@ -1,8 +1,8 @@
 # Secure AI HR System
 
-Hackathon prototype (ASTROPRENEUR 2.0): AI agents that take over daily HR work — resume screening and ranking, inbox triage by urgency, reply drafting, follow-ups, interview scheduling, policy Q&A, employee tickets, team broadcasts and recognition points — while staying secure against the untrusted content they read.
+Hackathon prototype (ASTROPRENEUR 2.0): AI agents that take over daily HR work — resume screening and ranking, inbox triage by urgency, reply drafting, follow-ups, interview scheduling, policy Q&A, HR tickets, team broadcasts and recognition points — while staying secure against the untrusted content they read.
 
-**Golden rule: the agent executes, the human decides.** Agents only *propose* actions. Nothing is sent or recorded until a human approves it; the approval is signed and verified by the executor, the only component that can send mail or change records. Decisions about a candidate, learned weights and broadcasts need a second person (four-eyes rule).
+**Golden rule: the agent executes, the human decides.** Agents only *propose* actions. Nothing is sent or recorded until a human approves it; the approval is signed and verified by the executor, the only component that can send mail or change records. Decisions about a candidate, job offers, learned weights and broadcasts need a second person, a manager or admin (four-eyes rule).
 
 ## Quick start
 
@@ -20,13 +20,14 @@ cp .env.example .env
 
 `run.py` starts the API and the dashboard together and opens http://localhost:8501 (Ctrl+C stops both; on Windows you can double-click `run.bat`). API docs: http://127.0.0.1:8000/docs
 
+Only HR staff log in; employees are records, not users. Three roles, each adding to the one before
+(full access table: [docs/roles.md](docs/roles.md)):
+
 | Account | Role |
 |---|---|
-| `admin@acme.test` | Everything, plus audit log, API keys and demo data |
-| `recruiter@acme.test` | Screens, drafts and approves |
-| `manager@acme.test` | Recruiter, plus sees and validates individual employee skills |
-| `viewer@acme.test` | Read only |
-| `yasmine.b@hr-demo.test` | Employee: asks HR, opens tickets |
+| `recruiter@acme.test` | **Recruiter:** runs hiring and HR requests day to day. Proposes; does not sign off. |
+| `manager@acme.test` | **Manager:** everything a recruiter does, signs off on job offers, hiring decisions, broadcasts and scoring weights, and sees and validates individual employee skills. |
+| `admin@acme.test` | **Admin (IT/security):** everything, plus API keys, the audit log and demo data. |
 
 Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bottom of the Home page, tick the bulk option and click **Load demo data**. The menu shows each role only the pages it can use.
 
@@ -39,9 +40,9 @@ Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bott
 | Automatic replies | Drafts for inbox emails (candidate-scoped), and candidate emails written from the candidate's own file. A rejection needs an approved decision first. | Inbox and Screening pages |
 | Candidate follow-ups | Reminder drafts for candidates who have not answered our last message after `REMINDER_AFTER_DAYS`; follow-ups for unanswered inbox emails. A reminder is withdrawn automatically if the candidate writes back. | Follow-ups page, `POST /followups/scan` (n8n cron) |
 | Interview scheduling | Free slots from the interviewer calendar. At approval, either book a slot now, or send the candidate a single-use link to pick one. A booked slot is never offered twice. | Scheduling and Approvals pages, `/public/schedule/{token}` |
-| Employee questions | Answers from policy documents only, with sources; anything else is escalated. Employees can open tickets; the drafted reply waits for HR. | Ask HR page, `/qa/ask`, `/hr/tickets` |
+| Policy questions and HR requests | Answers from policy documents only, with sources; anything else is escalated. HR files an employee's request as a ticket; the drafted reply to the employee waits for approval. | Ask HR page, `/qa/ask`, `/hr/tickets` |
 | HR operations | Interview co-pilot (probing questions when an answer is vague), team broadcasts with a fact check, recognition points and leaderboard. | HR operations page; the n8n versions on "HR ops via n8n" (in the menu once `N8N_BASE_URL` is set) |
-| Project staffing & skill gaps | Upload a project charter and dependency manifests; the AI extracts the skills the project needs (a person confirms them); the gaps against the team's validated skills and free capacity are computed in code (missing, level too low, not enough capacity); internal options (upskill, rebalance, validate a declared skill, related skill) come first; for a gap marked "hire externally" the AI drafts a job description (checked for invented pay, links, exclusionary wording, employee names), and a second person approves it into a job that screening can rank against. Spec: [docs/specs/project-staffing-gap-analysis.md](docs/specs/project-staffing-gap-analysis.md) | Project Staffing page, `/projects`, `/skills/matrix`, `/employees/{id}/skills` |
+| Project staffing & skill gaps | Upload a project charter and dependency manifests; the AI extracts the skills the project needs (a person confirms them); the gaps against the team's validated skills and free capacity are computed in code (missing, level too low, not enough capacity); internal options (upskill, rebalance, validate a skill, related skill) come first; for a gap marked "hire externally" the AI drafts a job description (checked for invented pay, links, exclusionary wording, employee names), and a second person approves it into a job that screening can rank against. Spec: [docs/specs/project-staffing-gap-analysis.md](docs/specs/project-staffing-gap-analysis.md) | Project Staffing page, `/projects`, `/skills/matrix`, `/employees/{id}/skills` |
 | Security visibility | Every blocked file, injection, hidden text and quarantine in one place, plus the hash-chained audit log. | AI Firewall page |
 
 ## Demo walkthrough (5 minutes)
@@ -103,7 +104,7 @@ docs/architecture/
 | `data/calendar.json` | Busy blocks for 4 interviewers over the next 2 weeks |
 | `data/employees/backend_engineer_hires.csv` | Past hires to try the weight learner |
 | `data/projects/` | 3 projects (payments migration, mobile app, data platform) with charters and manifests; the mobile charter has a planted injection |
-| `data/employees/employee_skills.csv`, `data/skills/taxonomy.json` | Skill matrix of the 12 employees (validated and self-declared) and the skill taxonomy (synonyms, related skills, package names) |
+| `data/employees/employee_skills.csv`, `data/skills/taxonomy.json` | Skill matrix of the 12 employees (validated and not yet validated) and the skill taxonomy (synonyms, related skills, package names) |
 | `n8n/data/` | 12 employees, 4 teams, points rules and ledger, policy sections |
 
 ## Security design

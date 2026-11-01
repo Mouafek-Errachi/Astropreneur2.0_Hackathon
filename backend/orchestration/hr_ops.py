@@ -34,7 +34,7 @@ def propose_broadcast(session: Session, tenant_id: int, team_id: str, notes: str
 def create_ticket(session: Session, tenant_id: int, employee_id: str, text: str, requested_by: str) -> Ticket:
     emp = session.get(Employee, employee_id)
     if not emp or emp.tenant_id != tenant_id or not emp.active:
-        raise HTTPException(403, "FORBIDDEN")
+        raise HTTPException(404, "Employee not found or inactive")
     g = inspect_text(session, text, source="ticket", tenant_id=tenant_id, max_chars=3000)
     hits = policy_rag.search(session, tenant_id, g.clean, k=3)
     policy_ctx = "\n".join(f"[{policy_rag.label(c)}] {c.title}: {c.content}" for _, c in hits)

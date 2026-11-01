@@ -4,18 +4,18 @@ from api import call, can, require_login
 from ui import page_header
 
 require_login()
-page_header("Ask HR", "Answers come only from the company policy documents, with their sources. Anything they do not "
-                      "cover goes to the HR team.")
+page_header("Ask HR", "Policy answers for HR staff, taken only from the company policy documents, with their sources. "
+                      "Requests from employees are filed here on their behalf.")
 
-EXAMPLES = ["How do I claim my expenses?", "How long is the probation period?", "How is overtime paid?",
-            "What is my training budget?"]
+EXAMPLES = ["How are expenses claimed?", "How long is the probation period?", "How is overtime paid?",
+            "What is the yearly training budget?"]
 
 
 def _pick_example() -> None:
     st.session_state.hr_question, st.session_state.hr_example = st.session_state.hr_example, None
 
 
-tabs = ["Ask a question"] + (["Send a request to HR"] if can("tickets:create") else [])
+tabs = ["Ask a question"] + (["File a request for an employee"] if can("hr:write") else [])
 views = st.tabs(tabs) if len(tabs) > 1 else [st.container()]
 
 with views[0]:
@@ -34,7 +34,7 @@ with views[0]:
                 st.warning("This question contains text that looks like an instruction to the AI. It was treated as a "
                            "question only.", icon=":material/gpp_maybe:")
             if msg["escalate_to_hr"]:
-                st.info("Not covered by the policies: the HR team has been told.", icon=":material/support_agent:")
+                st.info("Not covered by the policies: check with the policy owner.", icon=":material/support_agent:")
     if question := st.chat_input("Ask about expenses, overtime, training, travel…") or st.session_state.pop("hr_question", None):
         chat.append({"role": "user", "text": question})
         with st.spinner("Looking in the policies..."):
@@ -48,12 +48,16 @@ with views[0]:
 
 if len(views) > 1:
     with views[1], st.form("ticket", clear_on_submit=True):
-        st.caption("HR receives your request with a drafted answer. A person reviews it before anything is sent to you.")
-        text = st.text_area("Your request", placeholder="e.g. I need a certificate of employment for my visa appointment.")
-        if st.form_submit_button("Send request", type="primary", icon=":material/send:"):
+        st.caption("For a request an employee sent by email, phone or in person. The AI sorts it and drafts a reply to "
+                   "the employee; the reply waits in Approvals until someone approves it.")
+        people = call("GET", "/hr/employees") or []
+        names = {e["id"]: f"{e['name']} · {e['team']} · {e['id']}" for e in people if e["active"]}
+        emp = st.selectbox("Employee", list(names), format_func=names.get)
+        text = st.text_area("Their request", placeholder="e.g. I need a certificate of employment for my visa appointment.")
+        if st.form_submit_button("File request", type="primary", icon=":material/send:"):
             if not text.strip():
-                st.warning("Write your request first.")
-            elif r := call("POST", "/hr/tickets", json={"request_text": text}):
+                st.warning("Write the request first.")
+            elif r := call("POST", "/hr/tickets", json={"employee_id": emp, "request_text": text}):
                 st.success(f"{r['message']} (category: {r['category']}, priority: {r['priority']})",
                            icon=":material/check_circle:")
 

@@ -18,9 +18,23 @@ def test_requires_auth(client):
     assert client.get("/jobs", headers={"Authorization": "Bearer forged.token.value"}).status_code == 401
 
 
-def test_viewer_is_read_only(client, viewer):
-    assert client.get("/jobs", headers=viewer).status_code == 200
-    assert client.post("/jobs", json={"title": "X job"}, headers=viewer).status_code == 403
+def test_read_only_key_cannot_write(client, reader):
+    assert client.get("/jobs", headers=reader).status_code == 200
+    assert client.post("/jobs", json={"title": "X job"}, headers=reader).status_code == 403
+
+
+def test_only_three_hr_roles_and_what_they_can_do(client, recruiter, manager, admin):
+    roles = client.get("/auth/roles").json()  # public: it describes the product, not a user
+    assert [r["role"] for r in roles["roles"]] == ["recruiter", "manager", "admin"] and roles["access"]
+    me = {who: client.get("/auth/me", headers=h).json() for who, h in
+          (("recruiter", recruiter), ("manager", manager), ("admin", admin))}
+    assert all(m["role_summary"] for m in me.values())
+    rec, man, adm = (set(me[r]["scopes"]) for r in ("recruiter", "manager", "admin"))
+    assert rec < man < adm  # each role adds to the one before
+    assert man - rec == {"approvals:sign_off", "skills:read", "skills:manage"}
+    assert adm - man == {"admin", "audit:read", "qa:admin"}
+    for gone in ("viewer@acme.test", "yasmine.b@hr-demo.test"):  # no read-only or employee accounts any more
+        assert client.post("/auth/login", data={"username": gone, "password": "x"}).status_code == 401
 
 
 def test_unknown_fields_rejected(client, recruiter):

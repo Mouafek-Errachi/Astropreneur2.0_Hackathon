@@ -30,10 +30,10 @@ def test_reply_needs_approval_and_runs_once(client, recruiter):
     assert client.post(f"/approvals/{draft['action_id']}/approve", json={}, headers=recruiter).status_code == 409
 
 
-def test_viewer_cannot_approve(client, recruiter, viewer):
+def test_read_only_key_cannot_approve(client, recruiter, reader):
     e = _email(client, recruiter, "v@example.com", "Question about the role please")
     draft = client.post(f"/emails/{e['id']}/draft-reply", headers=recruiter).json()
-    assert client.post(f"/approvals/{draft['action_id']}/approve", json={}, headers=viewer).status_code == 403
+    assert client.post(f"/approvals/{draft['action_id']}/approve", json={}, headers=reader).status_code == 403
 
 
 def test_quarantined_email_never_reaches_agent(client, recruiter):
@@ -87,3 +87,12 @@ def test_audit_chain_is_valid(client, admin):
     assert client.get("/audit/verify", headers=admin).json()["chain_valid"] is True
     with Session(engine) as s:
         assert s.exec(select(Approval)).first() is not None
+
+
+def test_high_stakes_actions_need_a_manager_sign_off(client, recruiter, manager, admin):
+    body = {"target_team": "engineering", "message_prompt": "Remind the team about the new expenses tool next week."}
+    a = client.post("/hr/broadcast", json=body, headers=manager).json()
+    r = client.post(f"/approvals/{a['action_id']}/approve", json={"acknowledge_risk": True}, headers=recruiter)
+    assert r.status_code == 403 and "SIGN_OFF" in r.json()["detail"]  # not the requester, but not a manager either
+    r = client.post(f"/approvals/{a['action_id']}/approve", json={"acknowledge_risk": True}, headers=admin)
+    assert r.status_code == 200, r.text

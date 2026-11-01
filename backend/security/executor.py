@@ -92,9 +92,11 @@ def approve(session: Session, action: ProposedAction, reviewer: Principal, *, no
         raise HTTPException(409, f"ALREADY_DECIDED: action is {action.status}")
     if action.risk_level == "high" and not acknowledge_risk:
         raise HTTPException(400, "HIGH_RISK: review the flags and set acknowledge_risk=true")
-    if action.requested_by == reviewer.subject and (
-            action.type in FOUR_EYES_ALWAYS or (action.type in FOUR_EYES_DECISIONS and get_settings().four_eyes_decisions)):
-        raise HTTPException(403, "FOUR_EYES: the person who requested this action cannot approve it")
+    if action.type in FOUR_EYES_ALWAYS or (action.type in FOUR_EYES_DECISIONS and get_settings().four_eyes_decisions):
+        if action.requested_by == reviewer.subject:
+            raise HTTPException(403, "FOUR_EYES: the person who requested this action cannot approve it")
+        if "approvals:sign_off" not in reviewer.scopes:
+            raise HTTPException(403, "SIGN_OFF: a manager or admin must approve this action")
     if edits:
         payload = json.loads(action.payload)
         for k in ("subject", "body"):  # the recipient can never be edited

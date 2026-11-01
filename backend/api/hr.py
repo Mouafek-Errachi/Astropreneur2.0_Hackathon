@@ -1,4 +1,5 @@
-"""Employee-facing and HR-ops endpoints (ported from the n8n workflows) + policy Q&A."""
+"""HR-ops endpoints (ported from the n8n workflows) + policy Q&A. Only HR staff log in: tickets are filed by HR on
+an employee's behalf, and the drafted reply to the employee still waits for approval."""
 import json
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -36,15 +37,12 @@ def reindex(p: Principal = Depends(require("qa:admin")), session: Session = Depe
     return {"chunks": seed.index_policies(session, p.tenant_id)}
 
 
-# ---------------------------------------------------------------- tickets (identity from the token, not the body)
+# ---------------------------------------------------------------- tickets (HR files them for an employee)
 @router.post("/hr/tickets")
-def create_ticket(body: TicketCreate, p: Principal = Depends(require("tickets:create", human_only=True)),
-                  session: Session = Depends(get_session)):
-    if not p.employee_id:
-        raise HTTPException(403, "Only employee accounts can open tickets")
-    t = hr_ops.create_ticket(session, p.tenant_id, p.employee_id, body.request_text, p.subject)
+def create_ticket(body: TicketCreate, p: Principal = Depends(require("hr:write")), session: Session = Depends(get_session)):
+    t = hr_ops.create_ticket(session, p.tenant_id, body.employee_id, body.request_text, p.subject)
     return {"ticket_id": str(t.id), "category": t.category, "priority": t.priority, "status": t.status,
-            "message": "Your request was received; HR will reply after review."}
+            "message": "Ticket created. The drafted reply to the employee is waiting in Approvals."}
 
 
 @router.get("/hr/tickets")

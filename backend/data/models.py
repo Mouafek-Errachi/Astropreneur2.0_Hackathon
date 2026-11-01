@@ -30,8 +30,8 @@ class User(SQLModel, table=True):
     tenant_id: int = Field(foreign_key="tenant.id", index=True)
     email: str = Field(index=True, unique=True)
     hashed_password: str
-    role: str = "viewer"  # admin | recruiter | viewer | employee
-    employee_id: Optional[str] = None  # links an employee login to hr_employees
+    role: str = "recruiter"  # recruiter | manager | admin (see security/gateway.py ROLE_SCOPES)
+    employee_id: Optional[str] = None  # the HR user's own employee record: no self-awards, no editing own skills
     active: bool = True
 
 

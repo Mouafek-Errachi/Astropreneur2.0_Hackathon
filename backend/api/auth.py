@@ -7,8 +7,8 @@ from backend.data.db import get_session
 from backend.data.models import ApiKey
 from backend.schemas import ApiKeyCreate, Token
 from backend.security import audit, events
-from backend.security.gateway import (API_KEY_ALLOWED_SCOPES, Principal, authenticate_user, create_access_token,
-                                      generate_api_key, get_owned, get_principal, limiter, require)
+from backend.security.gateway import (API_KEY_ALLOWED_SCOPES, ROLE_ACCESS, ROLE_SUMMARY, Principal, authenticate_user,
+                                      create_access_token, generate_api_key, get_owned, get_principal, limiter, require)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -29,7 +29,14 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), session
 @router.get("/me")
 def me(p: Principal = Depends(get_principal)):
     return {"email": p.subject, "role": p.role, "tenant_id": p.tenant_id, "kind": p.kind,
-            "employee_id": p.employee_id, "scopes": sorted(p.scopes)}
+            "role_summary": ROLE_SUMMARY.get(p.role, ""), "scopes": sorted(p.scopes)}
+
+
+@router.get("/roles")
+def roles():
+    """The three HR roles and what each can do, in plain words. Public: it describes the product, not a user."""
+    return {"roles": [{"role": r, "summary": s} for r, s in ROLE_SUMMARY.items()],
+            "access": [{"what": what, "recruiter": rec, "manager": man, "admin": adm} for what, rec, man, adm in ROLE_ACCESS]}
 
 
 @router.post("/api-keys")

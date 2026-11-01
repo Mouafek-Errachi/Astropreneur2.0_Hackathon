@@ -25,22 +25,52 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 limiter = Limiter(key_func=get_remote_address, enabled=settings.rate_limit_enabled,
                   default_limits=[settings.default_rate_limit])
 
-# ------------------------------------------------------------------ scopes
-EMPLOYEE_SCOPES = {"qa:ask", "tickets:create"}
-VIEWER_SCOPES = {"jobs:read", "emails:read", "approvals:read", "followups:read", "scheduling:read",
-                 "hr:read", "qa:ask", "security:read", "projects:read"}
-RECRUITER_SCOPES = VIEWER_SCOPES | {
-    "jobs:write", "resumes:upload", "screening:run", "emails:ingest", "emails:process", "drafts:create",
-    "approvals:decide", "followups:manage", "scheduling:manage", "hr:write", "interview:assist", "projects:write",
+# ------------------------------------------------------------------ roles and scopes
+# Only HR staff log in. Employees are records (skills, leave, points), never users. Each role adds to the one above.
+# docs/roles.md and the dashboard's "Roles" panel describe the same table in plain words: keep them in sync.
+RECRUITER_SCOPES = {
+    # recruiting: jobs, CVs, screening, inbox, candidate emails, interviews, follow-ups
+    "jobs:read", "jobs:write", "resumes:upload", "screening:run", "emails:read", "emails:ingest", "emails:process",
+    "drafts:create", "scheduling:read", "scheduling:manage", "followups:read", "followups:manage",
+    "interview:assist",
+    # approvals: approve routine actions (candidate emails, interview slots); not the ones that need a sign-off
+    "approvals:read", "approvals:decide",
+    # HR operations: tickets on an employee's behalf, broadcast and points proposals, policy questions
+    "hr:read", "hr:write", "qa:ask",
+    # project staffing with team totals only (no names, no individual skill levels)
+    "projects:read", "projects:write",
+    # the AI Firewall page: blocked files and injections (the audit log stays with admins)
+    "security:read",
 }
-# Managers additionally see and validate individual employee skill levels (recruiters only see team totals).
-MANAGER_SCOPES = RECRUITER_SCOPES | {"skills:read", "skills:manage"}
-ADMIN_SCOPES = MANAGER_SCOPES | {"admin", "audit:read", "qa:admin"}
-ROLE_SCOPES = {"employee": EMPLOYEE_SCOPES, "viewer": VIEWER_SCOPES, "recruiter": RECRUITER_SCOPES,
-               "manager": MANAGER_SCOPES, "admin": ADMIN_SCOPES}
+MANAGER_SCOPES = RECRUITER_SCOPES | {
+    "approvals:sign_off",  # job offers, hiring decisions, broadcasts, scoring weights: a manager or admin signs off
+    "skills:read",  # who has which skill at which level (personal data)
+    "skills:manage",  # add, change and validate employee skills
+}
+ADMIN_SCOPES = MANAGER_SCOPES | {"admin", "audit:read", "qa:admin"}  # API keys, audit log, policy index, demo data
+ROLE_SCOPES = {"recruiter": RECRUITER_SCOPES, "manager": MANAGER_SCOPES, "admin": ADMIN_SCOPES}
+
+ROLE_SUMMARY = {
+    "recruiter": "HR recruiter: runs hiring and HR requests day to day. Proposes; does not sign off.",
+    "manager": "HR manager: everything a recruiter does, signs off on high-stakes actions and owns employee skills.",
+    "admin": "Admin (IT/security): everything, plus API keys, the audit log and demo data.",
+}
+# (what, recruiter, manager, admin): the access table shown on the dashboard and in docs/roles.md.
+ROLE_ACCESS = [
+    ("Jobs, CV upload and screening", True, True, True),
+    ("Inbox and drafting candidate emails", True, True, True),
+    ("Interview scheduling and follow-ups", True, True, True),
+    ("Approve routine actions (candidate emails, interview slots)", True, True, True),
+    ("Sign off job offers, hiring decisions, team broadcasts, scoring weights", False, True, True),
+    ("HR tickets, broadcast and recognition proposals, Ask HR", True, True, True),
+    ("Projects and skill gaps (team totals)", True, True, True),
+    ("Individual employee skill levels: see, add, validate", False, True, True),
+    ("AI Firewall: blocked files and injections", True, True, True),
+    ("Audit log, API keys, policy re-index, demo data", False, False, True),
+]
 
 # Scopes a machine credential (e.g. the n8n API key) can NEVER hold: a human must decide.
-HUMAN_ONLY_SCOPES = {"approvals:decide", "admin", "audit:read", "qa:admin", "tickets:create", "skills:read",
+HUMAN_ONLY_SCOPES = {"approvals:decide", "approvals:sign_off", "admin", "audit:read", "qa:admin", "skills:read",
                      "skills:manage"}
 API_KEY_ALLOWED_SCOPES = ADMIN_SCOPES - HUMAN_ONLY_SCOPES
 
