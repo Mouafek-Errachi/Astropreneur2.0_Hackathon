@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     demo_manager_password: str = "Manager#2026!"
     enable_demo_data: bool = True  # admin-only demo-data loader (turn off outside demos)
 
+    # Workforce analytics (docs/specs/workforce-telemetry-analytics.md)
+    analytics_utilisation_alert: float = 0.9  # a team at or above this share of its capacity is flagged
+    analytics_gap_fte_alert: float = 1.0  # a team with at least this much open gap FTE is flagged
+    analytics_min_group: int = 3  # without skills:read, team figures from fewer people are hidden
+    analytics_retention_days: int = 365  # daily snapshots older than this are deleted
+
     # L3 agents: LLM provider = mock | gemini | grok, with an optional fallback provider
     llm_provider: str = "mock"
     llm_fallback_provider: str = ""

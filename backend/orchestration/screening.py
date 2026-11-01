@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 from backend.agents import bias_auditor, brief, compare, drafter, ranker
 from backend.agents.schemas import CandidateProfile
 from backend.config import get_settings
+from backend.data import pipeline
 from backend.data.models import Application, Candidate, FairnessReport, JobOffer, ProposedAction, Resume, utcnow
 from backend.orchestration import learner, workflow
 from backend.security import audit
@@ -73,7 +74,8 @@ def screen(session: Session, job: JobOffer, actor: str, reparse: bool = False) -
         resume.profile = profile.model_dump_json()
         app.llm_fallback = fallback
         if app.status == "new":
-            app.status = "needs_review" if resume.risk_level in ("medium", "high") else "screened"
+            pipeline.set_status(session, app, "needs_review" if resume.risk_level in ("medium", "high") else "screened",
+                                actor)
         if cand.stage == "new":
             cand.stage = "screened"
         _apply_score(session, app, resume, crit, profile)

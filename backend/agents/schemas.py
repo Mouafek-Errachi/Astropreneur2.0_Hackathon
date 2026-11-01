@@ -145,3 +145,14 @@ class JobDescriptionDraft(Strict):
     nice_to_have: list[str] = Field(default_factory=list, max_length=10)
     min_years: float = Field(default=0, ge=0, le=20)
     body: str = Field(max_length=4000)
+
+
+# ------------------------------------------------------------------ workforce analytics
+class Observation(Strict):
+    text: str = Field(max_length=300)
+    metric_keys: list[str] = Field(default_factory=list, max_length=5)  # the metrics whose values the text quotes
+
+
+class InsightsDraft(Strict):
+    headline: str = Field(max_length=160)
+    observations: list[Observation] = Field(default_factory=list, max_length=5)

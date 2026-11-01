@@ -18,9 +18,8 @@ Reuse the existing components named below; do not introduce new frameworks.
   keystrokes, logins, productivity scores or sentiment. The inputs are records HR already keeps: skills,
   project allocations, open gaps, the hiring pipeline and the approval queue.
 - **"Real-time" means live on request, plus history.** At this scale (tens of employees, hundreds of applications)
-  every metric is computed from the current tables when the page loads, cached for 60 seconds. A daily snapshot
-  stores the same metrics so trends can be drawn. Event-driven recomputation is not needed: the live view is always
-  current.
+  every metric is computed from the current tables on each request, so the view is always current and there is no
+  cache to invalidate. A daily snapshot stores the same metrics so trends can be drawn.
 - **"Department heads" are not users.** Only HR staff log in. The HR **manager** role plays that part. Team-scoped
   managers (a manager who sees only their own teams) are listed as roadmap in section 7.
 - **Numbers come from code, words from the AI.** The agent only writes a short narrative about metrics that were
@@ -82,8 +81,7 @@ A team is flagged when one of these is true. Each flag shows the rule that trigg
 
 ## 2. Workflow
 
-1. **Live view.** `GET /analytics/*` computes the metrics from the current tables. The results are cached in memory
-   for 60 seconds, per tenant and per role level, so a recruiter's cache never holds individual data.
+1. **Live view.** `GET /analytics/*` computes the metrics from the current tables on each request.
 2. **Daily snapshot.** n8n calls `POST /analytics/snapshot` once a day, and an admin can also run it from the page.
    It stores one row per metric, team and day (idempotent: running it twice the same day replaces that day's rows).
    Snapshots only store aggregates, never individual rows.
@@ -96,7 +94,7 @@ A team is flagged when one of these is true. Each flag shows the rule that trigg
 
 | Layer | What to add |
 |---|---|
-| L1 Presentation: new `dashboard/pages/12_Workforce_Analytics.py`, under "People" in `nav.py` | Four tabs: **Teams** (KPI tiles per team, under-resourced flags, a capacity vs allocated bar chart), **Skills** (a team x skill heatmap of validated holders, coloured by depth and filterable by skill category, plus a single-points-of-failure table), **Gaps** (gap FTE by team and by kind as stacked bars, and most demanded skills), **Pipeline** (funnel per job, intake by source, approval queue age, time-in-stage once events exist). An Altair selection on the team bar filters the other charts. Trend lines come from snapshots and appear once there are 2 or more days. The **workload heatmap** (employee x project) shows only for `skills:read`. Every chart has a "Show data" table under it, so values can be read without colour (accessibility), and a CSV download of the **aggregates** only. |
+| L1 Presentation: new `dashboard/pages/12_Workforce_Analytics.py`, under "People" in `nav.py` | Four tabs: **Teams** (KPI tiles per team, under-resourced flags, a utilisation bar chart with the alert threshold, utilisation trends), **Skills** (a team x skill heatmap of validated holders, a team filter, the single-points-of-failure table and the validation backlog), **Gaps** (gap FTE by team and by kind as stacked bars, most demanded skills, decision status), **Pipeline** (applications by status per job, intake by source, approval queue age, time-in-stage once events exist). Team filters are select boxes above the charts. Each team keeps one palette slot whoever is looking, so hiding a small team never recolours the others. Trend lines come from snapshots and appear once there are 2 or more days. The **workload heatmap** (employee x project) shows only for `skills:read`. Every chart has a "Show data" table under it, so values can be read without colour (accessibility), and a CSV download of the **aggregates** only. |
 | L2 Orchestration: new `backend/orchestration/analytics.py` | Pure functions: `team_bandwidth`, `skill_distribution`, `single_points_of_failure`, `gap_summary`, `pipeline_funnel`, `intake_by_source`, `approval_queue`, `team_flags`, `snapshot(tenant)`. Each takes a session and a tenant and returns plain dicts. They reuse `staffing._free_pct` and the `SkillGap` rows rather than recomputing gaps. Minimum group size (section 5) is applied here, before data leaves the layer. |
 | L3 Agents: new `backend/agents/insights.py` | `summarise(metrics: dict) -> InsightsDraft` through `complete_json`. The input is **trusted, aggregated** JSON (team names, counts, FTE, skill names): no employee names, no free text from documents or emails. The schema is `headline` (at most 120 chars) and `observations` (at most 5 items of `{text, metric_keys}`). The code checks that each observation's numbers appear in the referenced metrics, and drops any that don't. The mock writes template sentences from the top flags. One call per page request at most, and only on demand ("Summarise"). |
 | L4 Data: `backend/data/models.py` | `MetricSnapshot(tenant_id, day, metric, team_id nullable, dims JSON, value float)` with a unique key on (tenant, day, metric, team, dims hash). `PipelineEvent(tenant_id, application_id, from_status, to_status, at, actor)` is written wherever an application's status changes (screening and the executor). Departmental mapping stays `Employee.team_id`, with no new table. Bump `SCHEMA_VERSION`. Retention: snapshots older than `ANALYTICS_RETENTION_DAYS=365` are deleted by the snapshot job. |
@@ -107,14 +105,15 @@ A team is flagged when one of these is true. Each flag shows the rule that trigg
 | Method | Path | Scope | Returns |
 |---|---|---|---|
 | GET | `/analytics/teams` | `analytics:read` | Capacity, allocated, free, utilisation, over-allocated count and flags per team |
-| GET | `/analytics/skills?team=&category=` | `analytics:read` | Validated holders per team x skill x level, coverage depth, validation backlog |
+| GET | `/analytics/skills?team=` | `analytics:read` | Validated holders per team x skill x level, coverage depth, validation backlog |
 | GET | `/analytics/skills/single-points` | `analytics:read` | Skills needed by active projects with only one validated holder; the holder's id only with `skills:read` |
-| GET | `/analytics/gaps` | `analytics:read` | Gap FTE by team, by kind and by decision status; most demanded skills |
+| GET | `/analytics/gaps` | `analytics:read` | Gap FTE by team, by kind, by team and kind, and by decision status; most demanded skills |
 | GET | `/analytics/pipeline?job=` | `analytics:read` | Funnel, intake by source, approval queue, time in stage |
 | GET | `/analytics/workload?team=` | `analytics:read` + `skills:read` | Employee x project allocation matrix (individual data) |
 | GET | `/analytics/trends?metric=&team=&days=` | `analytics:read` | Daily snapshot series (at most 365 days) |
 | POST | `/analytics/insights` | `analytics:read`, human only | AI narrative of the current aggregates, validated |
 | POST | `/analytics/snapshot` | `analytics:snapshot` | Stores today's snapshot (n8n daily cron) |
+| POST | `/analytics/exported` | `analytics:read`, human only | The dashboard reports each CSV download, for the audit log |
 
 Responses never contain names for recruiters. Where a person must be identified (workload, single point of failure),
 the employee id and short name are returned only with `skills:read`, as on the staffing page.
@@ -163,5 +162,5 @@ charts, so add:
 - assignments on every demo project, spread over at least 3 teams, so most teams show some utilisation;
 - one over-allocated employee (allocations summing to 120 %);
 - one skill with a single validated holder that an active project needs;
-- `scripts/generate_demo_data.py --snapshots 30`, which writes 30 days of plausible history so the trend lines are
-  not empty on the first run.
+- 30 days of plausible snapshot history, written by **Load demo data** (`analytics.demo_history`), so the trend
+  lines are not empty on the first run. Days that already have a real snapshot are left alone.

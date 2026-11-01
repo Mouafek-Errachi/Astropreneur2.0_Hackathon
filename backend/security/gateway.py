@@ -41,13 +41,16 @@ RECRUITER_SCOPES = {
     "projects:read", "projects:write",
     # the AI Firewall page: blocked files and injections (the audit log stays with admins)
     "security:read",
+    # workforce analytics: team totals, skills, gaps, pipeline (per-person workload also needs skills:read)
+    "analytics:read",
 }
 MANAGER_SCOPES = RECRUITER_SCOPES | {
     "approvals:sign_off",  # job offers, hiring decisions, broadcasts, scoring weights: a manager or admin signs off
     "skills:read",  # who has which skill at which level (personal data)
     "skills:manage",  # add, change and validate employee skills
 }
-ADMIN_SCOPES = MANAGER_SCOPES | {"admin", "audit:read", "qa:admin"}  # API keys, audit log, policy index, demo data
+# API keys, audit log, policy index, demo data; analytics:snapshot is also allowed on machine keys (the n8n daily cron)
+ADMIN_SCOPES = MANAGER_SCOPES | {"admin", "audit:read", "qa:admin", "analytics:snapshot"}
 ROLE_SCOPES = {"recruiter": RECRUITER_SCOPES, "manager": MANAGER_SCOPES, "admin": ADMIN_SCOPES}
 
 ROLE_SUMMARY = {
@@ -66,7 +69,9 @@ ROLE_ACCESS = [
     ("Projects and skill gaps (team totals)", True, True, True),
     ("Individual employee skill levels: see, add, validate", False, True, True),
     ("AI Firewall: blocked files and injections", True, True, True),
-    ("Audit log, API keys, policy re-index, demo data", False, False, True),
+    ("Workforce analytics: team totals, skills, gaps, hiring pipeline", True, True, True),
+    ("Workforce analytics: per-person workload and who holds a skill", False, True, True),
+    ("Audit log, API keys, policy re-index, demo data, analytics snapshots", False, False, True),
 ]
 
 # Scopes a machine credential (e.g. the n8n API key) can NEVER hold: a human must decide.

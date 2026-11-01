@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from backend.config import get_settings
+from backend.data import pipeline
 from backend.data.models import (Application, Approval, Candidate, JobOffer, PointsLedger, PointsRule, ProposedAction,
                                  SchedulingToken, SentEmail, utcnow)
 from backend.agents.drafter import INVITE_WHEN
@@ -166,8 +167,8 @@ def _execute(session: Session, action: ProposedAction, approval: Approval) -> No
             cand = session.get(Candidate, app.candidate_id) if app else None
             if not app or app.tenant_id != action.tenant_id:
                 raise ValueError("application not found")
-            app.status, cand.stage = p["decision"], p["decision"]
-            session.add(app)
+            pipeline.set_status(session, app, p["decision"], approval.reviewer_email)
+            cand.stage = p["decision"]
             session.add(cand)
             action.result = f"application {app.id} -> {p['decision']}"
         elif action.type == "schedule_interview":

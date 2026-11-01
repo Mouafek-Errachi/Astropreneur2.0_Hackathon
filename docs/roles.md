@@ -22,7 +22,9 @@ There are three roles, and each one adds to the one before it.
 | Projects and skill gaps (team totals) | ✅ | ✅ | ✅ |
 | Individual employee skill levels: see, add, validate | — | ✅ | ✅ |
 | AI Firewall: blocked files and injections | ✅ | ✅ | ✅ |
-| Audit log, API keys, policy re-index, demo data | — | — | ✅ |
+| Workforce analytics: team totals, skills, gaps, hiring pipeline | ✅ | ✅ | ✅ |
+| Workforce analytics: per-person workload and who holds a skill | — | ✅ | ✅ |
+| Audit log, API keys, policy re-index, demo data, analytics snapshots | — | — | ✅ |
 
 The same table is shown on the log-in page ("What each role can do") and in the sidebar ("What my role can do"). It
 comes from `ROLE_ACCESS` in `backend/security/gateway.py`, next to the scopes that enforce it (`ROLE_SCOPES`).
@@ -35,7 +37,10 @@ comes from `ROLE_ACCESS` in `backend/security/gateway.py`, next to the scopes th
 - **No self-service on your own record.** An HR user linked to an employee record cannot change their own skills or
   award themselves points.
 - **Machines never decide.** API keys (n8n, CV collectors) can never hold `approvals:*`, `skills:*`, `admin` or
-  `audit:read`, whatever an admin tries to grant.
+  `audit:read`, whatever an admin tries to grant. A key may hold `analytics:snapshot` (the daily n8n job) without
+  being able to read any analytics.
+- **Small teams stay anonymous.** Without `skills:read`, workforce analytics hide any team figure computed from fewer
+  than 3 people (`ANALYTICS_MIN_GROUP`).
 
 ## Scopes per role
 
@@ -47,6 +52,6 @@ comes from `ROLE_ACCESS` in `backend/security/gateway.py`, next to the scopes th
 | `approvals:read` `approvals:decide` | ✅ | ✅ | ✅ |
 | `hr:read` `hr:write` `qa:ask` | ✅ | ✅ | ✅ |
 | `projects:read` `projects:write` | ✅ | ✅ | ✅ |
-| `security:read` | ✅ | ✅ | ✅ |
+| `security:read` `analytics:read` | ✅ | ✅ | ✅ |
 | `approvals:sign_off` `skills:read` `skills:manage` | — | ✅ | ✅ |
-| `admin` `audit:read` `qa:admin` | — | — | ✅ |
+| `admin` `audit:read` `qa:admin` `analytics:snapshot` | — | — | ✅ |

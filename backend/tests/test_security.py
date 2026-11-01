@@ -32,7 +32,7 @@ def test_only_three_hr_roles_and_what_they_can_do(client, recruiter, manager, ad
     rec, man, adm = (set(me[r]["scopes"]) for r in ("recruiter", "manager", "admin"))
     assert rec < man < adm  # each role adds to the one before
     assert man - rec == {"approvals:sign_off", "skills:read", "skills:manage"}
-    assert adm - man == {"admin", "audit:read", "qa:admin"}
+    assert adm - man == {"admin", "audit:read", "qa:admin", "analytics:snapshot"}
     for gone in ("viewer@acme.test", "yasmine.b@hr-demo.test"):  # no read-only or employee accounts any more
         assert client.post("/auth/login", data={"username": gone, "password": "x"}).status_code == 401
 

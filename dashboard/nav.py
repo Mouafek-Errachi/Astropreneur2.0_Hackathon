@@ -33,6 +33,8 @@ PAGES = [
           "Tickets, team broadcasts, recognition points and the interview co-pilot."),
     Entry("People", "pages/6_Ask_HR.py", "Ask HR", "forum", "ask-hr", "qa:ask",
           "Policy answers with sources, and requests filed for an employee."),
+    Entry("People", "pages/12_Workforce_Analytics.py", "Workforce analytics", "monitoring", "analytics", "analytics:read",
+          "Team capacity, thin skills, open gaps and the hiring pipeline at a glance."),
     Entry("Security", "pages/8_AI_Firewall.py", "AI Firewall", "shield", "firewall", "security:read",
           "Every blocked file, injection and quarantine, plus the tamper-proof audit log."),
 ]

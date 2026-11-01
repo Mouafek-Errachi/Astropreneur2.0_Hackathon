@@ -141,4 +141,7 @@ def load_demo(session: Session, tenant_id: int, actor: str, bulk: bool = False) 
     from backend.orchestration import staffing
 
     out["projects"] = staffing.load_demo_projects(session, tenant_id, actor)
+    from backend.orchestration import analytics
+
+    out["analytics_history_rows"] = analytics.demo_history(session, tenant_id)  # 30 days for the trend charts
     return out
