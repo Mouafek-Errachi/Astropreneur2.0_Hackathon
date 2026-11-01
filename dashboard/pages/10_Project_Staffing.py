@@ -4,11 +4,16 @@ import pandas as pd
 import streamlit as st
 
 from api import call, require_login
+from ui import esc, page_header
 
 require_login()
 me = st.session_state.get("me") or call("GET", "/auth/me")
 scopes = set(me["scopes"])
-st.header("Project staffing & skill gaps")
+if "projects:read" in scopes:
+    page_header("Project staffing", "What each project needs, what the team covers, and a job description for each true "
+                                    "gap. The AI extracts and drafts; people confirm, decide and approve.")
+else:
+    page_header("My skills", "Declare your skills and level. They count for project staffing once a manager validates them.")
 
 LEVELS = {1: "1 beginner", 2: "2 working", 3: "3 senior", 4: "4 expert"}
 KIND = {"missing": "🔴 missing", "insufficient_level": "🟠 level too low", "insufficient_capacity": "🟡 not enough capacity"}
@@ -18,7 +23,7 @@ def my_skills() -> None:
     data = call("GET", "/employees/me/skills")
     if not data:
         return
-    st.subheader(f"My skills ({data['name']})")
+    st.subheader(f"My skills ({esc(data['name'])})")
     st.caption("Skills you declare count for project staffing only after a manager validates them.")
     if data["skills"]:
         st.dataframe([{"skill": s["skill"], "level": LEVELS[s["level"]],
@@ -43,7 +48,7 @@ if "projects:read" not in scopes:  # employees: only their own skill profile
 can_write = "projects:write" in scopes
 projects = call("GET", "/projects") or []
 
-with st.expander("New project", expanded=not projects):
+with st.expander("New project", expanded=not projects, icon=":material/add:"):
     if not can_write:
         st.caption("Read-only role.")
     else:
@@ -75,19 +80,19 @@ with tab_projects:
                                                 if by_id[i]["requirements_confirmed"] else "requirements to confirm"))
     st.session_state.project_id = pid
     p = call("GET", f"/projects/{pid}")
-    st.caption(f"{p['summary']}  ·  team: {p['team_id'] or '—'}  ·  deadline: {p['deadline'] or '—'}  ·  "
+    st.caption(f"{esc(p['summary'])}  ·  team: {p['team_id'] or '—'}  ·  deadline: {p['deadline'] or '—'}  ·  "
                f"already assigned: {p['assigned_fte']:g} FTE")
 
     # ---------------------------------------------------------------- documents
     with st.expander(f"Documents ({len(p['documents'])})", expanded=not p["documents"]):
         for d in p["documents"]:
             icon = {"none": "📄", "low": "📄", "medium": "⚠️", "high": "🛡️"}[d["risk_level"]]
-            st.write(f"{icon} **{d['filename']}** ({d['kind']}, risk {d['risk_level']})")
+            st.write(f"{icon} **{esc(d['filename'])}** ({d['kind']}, risk {d['risk_level']})")
             if d["flags"]:
                 st.warning("Injection guard: " + "; ".join(f"{f['type']} ({f['severity']})" for f in d["flags"][:5])
                            + ". The AI only extracts skills; the gaps are computed in code, so this text cannot hide a gap.")
             if d["hidden_text"]:
-                st.error(f"Hidden text removed before the AI saw it: “{d['hidden_text']}”")
+                st.error(f"Hidden text removed before the AI saw it: “{esc(d['hidden_text'])}”")
         if can_write:
             files = st.file_uploader("Charter (PDF, DOCX, TXT/MD) and manifests (requirements.txt, package.json, "
                                      "pom.xml, go.mod, Dockerfile, docker-compose.yml)", accept_multiple_files=True,
@@ -97,7 +102,7 @@ with tab_projects:
                 if r:
                     for x in r["documents"]:
                         if not x["accepted"]:
-                            st.warning(f"{x['filename']}: {x['error']}")
+                            st.warning(f"{esc(x['filename'])}: {esc(x['error'])}")
                     st.rerun()
 
     # ---------------------------------------------------------------- requirements (human confirms)
@@ -141,7 +146,7 @@ with tab_projects:
                      "🧾 hiring · " if g["status"] == "hiring" else
                      "⏳ job description in Approvals · " if g["status"] == "jd_proposed" else
                      "➡️ hire externally · " if g["decision"] == "hire_externally" else "❔ undecided · ")
-            head = (f"{state}{KIND[g['kind']]} **{g['skill']}** (level {g['level']}): {g['gap_fte']:g} FTE missing "
+            head = (f"{state}{KIND[g['kind']]} **{esc(g['skill'])}** (level {g['level']}): {g['gap_fte']:g} FTE missing "
                     f"({g['covered_fte']:g} of {g['needed_fte']:g} covered)")
             with st.expander(head, expanded=g["decision"] == "open" or (g["decision"] == "hire_externally" and g["status"] == "open")):
                 labels = [f"{o['kind']}: {o['employee_id'] + ' - ' if 'employee_id' in o else ''}{o['reason']}"
@@ -149,14 +154,14 @@ with tab_projects:
                 if labels:
                     st.markdown("**Internal options first:**")
                     for label in labels:
-                        st.write(f"- {label}")
+                        st.markdown(f"- {esc(label)}")
                     if "skills:read" not in scopes:
                         st.caption("Names are visible to managers only.")
                 else:
                     st.caption("No internal option: nobody has this skill or a related one.")
 
                 if g["decision"] == "internal":
-                    st.success(f"Covered internally: {g['internal_plan']}  (decided by {g['decided_by']})")
+                    st.success(f"Covered internally: {esc(g['internal_plan'])}  (decided by {g['decided_by']})")
                 elif g["status"] == "hiring":
                     st.success(f"Job offer created: rank applicants on the Screening page ({g['job_offer_id']}).")
                 elif g["status"] == "jd_proposed":
@@ -193,7 +198,7 @@ with tab_projects:
                         if call("PUT", f"/projects/{pid}/gaps/{g['id']}", json={"decision": "open"}):
                             st.rerun()
                 if jd := st.session_state.get(f"jd_{g['id']}"):
-                    st.markdown(f"**{jd['payload']['title']}** (risk: {jd['risk_level']})")
+                    st.markdown(f"**{esc(jd['payload']['title'])}** (risk: {jd['risk_level']})")
                     st.text(jd["payload"]["body"])
                     if jd["flags"]:
                         st.warning("Checks: " + "; ".join(f"{f['type']} ({f['severity']})" for f in jd["flags"]))

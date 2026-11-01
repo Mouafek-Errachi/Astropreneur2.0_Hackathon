@@ -5,9 +5,11 @@ import pandas as pd
 import streamlit as st
 
 from api import is_admin, n8n_call, n8n_configured, require_login
+from ui import page_header
 
 require_login()
-st.header("HR Ops (n8n + Gemini)")
+page_header("HR ops via n8n", "The same HR features, served by the n8n + Gemini workflow backend. Same rule: the agent "
+                              "drafts, a person decides.")
 if not n8n_configured():
     st.info("Set N8N_BASE_URL and the N8N_*_KEY variables for the dashboard (see .env.example and n8n/README.md).")
     st.stop()

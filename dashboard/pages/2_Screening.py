@@ -1,15 +1,16 @@
 """Resume screening (Ghassen's page, on the 5-layer API): plain-language criteria, editable weights, decisions and
 emails from the table, compare, learned weights, plus the bias check, hidden-text warnings and candidate chat."""
 import json
-import re
 
 import pandas as pd
 import streamlit as st
 
-from api import call, is_admin, require_login
+from api import call, can, is_admin, require_login
+from ui import empty, esc, page_header
 
 require_login()
-st.header("Resume screening")
+page_header("Screening", "Describe who you are looking for: the AI turns it into criteria and ranks every resume. "
+                         "Decisions go to Approvals, and someone else approves them.")
 
 DECISIONS = ["shortlisted", "interview", "rejected"]
 SOURCE_BADGE = {"upload": "⬆️ upload", "email": "✉️ email", "linkedin": "💼 linkedin", "drive": "📁 drive",
@@ -56,12 +57,12 @@ def run_ops() -> None:
     for op in st.session_state.pop("ops", []):
         if op["op"] == "view":
             st.session_state.view_aid = op["aid"]
-        elif op["blocked"]:
-            st.info(op["blocked"])
+        elif op["blocked"]:  # toasts: the user is down in the table, where a message at the top would go unseen
+            st.toast(esc(op["blocked"]), icon=":material/info:")
         elif op["op"] == "decide":
             if call("POST", f"/applications/{op['aid']}/decision", json={"decision": op["value"]}):
-                st.success(f"Decision '{op['value']}' for {op['name']} sent to the approval queue. "
-                           "Someone else must approve it.")
+                st.toast(f"Decision '{op['value']}' for {esc(op['name'])} sent to the approval queue. "
+                         "Someone else must approve it.", icon=":material/fact_check:")
         elif op["op"] == "draft":
             r = call("POST", f"/applications/{op['aid']}/email", json={"kind": op["value"]})
             if r:
@@ -92,10 +93,6 @@ def row_meta(c: dict, pending_decision: dict, pending_email: set) -> dict:
                     if aid in pending_decision else None)
     return {"id": aid, "name": name, "decision": decision, "state": state, "email_kind": kind, "email_label": label,
             "draft_block": block, "decide_block": decide_block}
-
-
-def md_escape(text: str) -> str:
-    return re.sub(r"([\\`*_{}\[\]()#+\-.!|<>~])", r"\\\1", text)
 
 
 def compare_table(cands: list[dict], crit: dict, metas: dict) -> pd.DataFrame:
@@ -135,8 +132,8 @@ def json_panel(cand: dict, where: str) -> None:
 
 
 def criteria_line(required_skills: list, nice_to_have: list, min_years: float, **_) -> str:
-    parts = [f"must have **{', '.join(required_skills)}**" if required_skills else "",
-             f"nice to have **{', '.join(nice_to_have)}**" if nice_to_have else "",
+    parts = [f"must have **{', '.join(map(esc, required_skills))}**" if required_skills else "",
+             f"nice to have **{', '.join(map(esc, nice_to_have))}**" if nice_to_have else "",
              f"at least **{min_years:g} years** of experience" if min_years else ""]
     return " · ".join(p for p in parts if p) or "no criteria yet"
 
@@ -163,21 +160,23 @@ def apply_brief(job: dict, text: str, reread: bool, weights: dict) -> None:
         st.rerun()
 
 
-def create_job_form(expanded: bool) -> None:
-    with st.expander("Create a job", expanded=expanded):
-        with st.form("job"):
-            title = st.text_input("Title")
-            desc = st.text_area("Description")
-            req = st.text_input("Required skills (comma separated)")
-            nice = st.text_input("Nice to have (comma separated)")
-            years = st.number_input("Minimum years of experience", 0.0, 40.0, 2.0)
-            if st.form_submit_button("Create"):
-                split = lambda s: [x.strip() for x in s.split(",") if x.strip()]  # noqa: E731
-                r = call("POST", "/jobs", json={"title": title, "description": desc, "required_skills": split(req),
-                                                "nice_to_have": split(nice), "min_years": years})
-                if r:
-                    st.session_state.job_id = r["id"]
-                    st.rerun()
+def create_job_form() -> None:
+    with st.form("job", border=False):
+        title = st.text_input("Title", placeholder="e.g. Backend Engineer")
+        desc = st.text_area("Description", placeholder="What the person will do")
+        req = st.text_input("Required skills (comma separated)", placeholder="e.g. python, sql")
+        nice = st.text_input("Nice to have (comma separated)", placeholder="e.g. docker, aws")
+        years = st.number_input("Minimum years of experience", 0.0, 40.0, 2.0)
+        if st.form_submit_button("Create the job", type="primary", icon=":material/add:"):
+            if not title.strip():
+                st.warning("Give the job a title.")
+                return
+            split = lambda s: [x.strip() for x in s.split(",") if x.strip()]  # noqa: E731
+            r = call("POST", "/jobs", json={"title": title, "description": desc, "required_skills": split(req),
+                                            "nice_to_have": split(nice), "min_years": years})
+            if r:
+                st.session_state.job_id = r["id"]
+                st.rerun()
 
 
 def load_demo_button() -> None:
@@ -197,6 +196,33 @@ def load_demo_button() -> None:
             st.rerun()
 
 
+def learn_weights(job: dict) -> None:
+    st.caption("CSV with one row per past hire: `skills` (at hiring time), `years_experience` (at hiring time), "
+               "`jira_done` (Jira tickets completed), `performance` (review score out of 100), and optionally `group`, "
+               "used only for the bias check. Any other column is refused. The rows are not stored; the learned "
+               "weights go to the approval queue and someone else approves them. Sample: "
+               "data/employees/backend_engineer_hires.csv")
+    hires = st.file_uploader("Past hires (CSV)", type="csv", key=f"hires{job['id']}")
+    if hires and st.button("Learn weights", type="primary", disabled=not can("jobs:write")):
+        r = call("POST", f"/jobs/{job['id']}/learn-weights", files={"file": (hires.name, hires.getvalue())})
+        if r:
+            rep, fair = r["report"], r["report"]["fairness"]
+            st.success("Proposed in the approval queue: someone else must approve it.")
+            st.table(pd.DataFrame({"Before": rep["previous_weights"], "Learned": rep["weights"]}))
+            rule = rep["outcome_rule"]
+            st.write(f"Success = {rule['performance_share']}% performance + {rule['jira_share']}% Jira tickets done "
+                     f"(ranked among colleagues). The better half, success {rule['good_if_success_at_least']} or more, "
+                     "counts as a good outcome.")
+            st.write(f"Learned from {rep['learned_from']} hires. The model predicts the outcome right "
+                     f"{rep['accuracy']:.0%} of the time, vs {rep['baseline_accuracy']:.0%} by always guessing "
+                     "the most common outcome.")
+            if fair["checked"]:
+                st.write(f"Bias check passed: impact ratio {fair['impact_ratio']} (four-fifths rule needs 0.8 or more).")
+                st.table(pd.DataFrame(fair["rates"]).T)
+            else:
+                st.warning(f"No bias check. {fair['reason']}.")
+
+
 if "demo_result" in st.session_state:
     if added := st.session_state.pop("demo_result"):
         st.success("Demo data loaded: " + ", ".join(f"{n} resumes into {t}" for t, n in added.items())
@@ -208,17 +234,24 @@ if "demo_result" in st.session_state:
 
 jobs = call("GET", "/jobs") or []
 if not jobs:
-    st.info("No job yet. Create one below" + (", or load the demo data." if is_admin() else "."))
+    empty("No job yet.", "Create one below" + (", or load the demo data." if is_admin() else "."))
     load_demo_button()
-    create_job_form(expanded=True)
+    if can("jobs:write"):
+        with st.container(border=True):
+            st.subheader("Create a job")
+            create_job_form()
     st.stop()
 
 by_id = {j["id"]: j for j in jobs}
 ids = list(by_id)
 current = st.session_state.get("job_id")
+pick, new = st.columns([5, 1], vertical_alignment="bottom")
 # Select by id and look the job up again: the selectbox would hand back the job as it was when first picked.
-job = by_id[st.selectbox("Job", ids, index=ids.index(current) if current in ids else 0,
-                         format_func=lambda i: f"{by_id[i]['title']} ({by_id[i]['applications']} resumes)")]
+job = by_id[pick.selectbox("Job", ids, index=ids.index(current) if current in ids else 0,
+                           format_func=lambda i: f"{by_id[i]['title']} ({by_id[i]['applications']} resumes)")]
+if can("jobs:write"):
+    with new.popover("New job", icon=":material/add:", width="stretch"):
+        create_job_form()
 st.session_state.job_id = job["id"]
 crit = job["criteria"]
 run_ops()
@@ -260,7 +293,7 @@ else:
 
 # Keyed on the saved criteria: when they change, the form starts again from the new values.
 ver = f"{job['id']}_{hash((tuple(current_req), tuple(current_nice), crit['min_years'], tuple(w.values())))}"
-with st.expander("Edit the criteria by hand"), st.form(f"criteria{job['id']}"):
+with st.expander("Edit the criteria by hand", icon=":material/tune:"), st.form(f"criteria{job['id']}"):
     left, right = st.columns([3, 2], gap="large")
     with left:
         req = st.multiselect("Required skills", pool, default=current_req, accept_new_options=True, key=f"req{ver}",
@@ -283,38 +316,14 @@ with st.expander("Edit the criteria by hand"), st.form(f"criteria{job['id']}"):
         if r is not None:
             st.rerun()
 
-with st.expander("Learn the weights from past hires"):
-    st.caption("CSV with one row per past hire: `skills` (at hiring time), `years_experience` (at hiring time), "
-               "`jira_done` (Jira tickets completed), `performance` (review score out of 100), and optionally `group`, "
-               "used only for the bias check. Any other column is refused. The rows are not stored; the learned "
-               "weights go to the approval queue and someone else approves them. Sample: "
-               "data/employees/backend_engineer_hires.csv")
-    hires = st.file_uploader("Past hires (CSV)", type="csv", key=f"hires{job['id']}")
-    if hires and st.button("Learn weights"):
-        r = call("POST", f"/jobs/{job['id']}/learn-weights", files={"file": (hires.name, hires.getvalue())})
-        if r:
-            rep, fair = r["report"], r["report"]["fairness"]
-            st.success("Proposed in the approval queue: someone else must approve it.")
-            st.table(pd.DataFrame({"Before": rep["previous_weights"], "Learned": rep["weights"]}))
-            rule = rep["outcome_rule"]
-            st.write(f"Success = {rule['performance_share']}% performance + {rule['jira_share']}% Jira tickets done "
-                     f"(ranked among colleagues). The better half, success {rule['good_if_success_at_least']} or more, "
-                     "counts as a good outcome.")
-            st.write(f"Learned from {rep['learned_from']} hires. The model predicts the outcome right "
-                     f"{rep['accuracy']:.0%} of the time, vs {rep['baseline_accuracy']:.0%} by always guessing "
-                     "the most common outcome.")
-            if fair["checked"]:
-                st.write(f"Bias check passed: impact ratio {fair['impact_ratio']} (four-fifths rule needs 0.8 or more).")
-                st.table(pd.DataFrame(fair["rates"]).T)
-            else:
-                st.warning(f"No bias check. {fair['reason']}.")
-
 # ------------------------------------------------------------------ ranking
 if not ranking:
-    st.info("No resumes for this job yet. Add some below.")
+    empty("No resumes for this job yet.",
+          "Add some in the 'Add resumes' tab below" + (", or load the demo data." if is_admin() else "."))
     load_demo_button()
 else:
-    f1, f2, f3 = st.columns([2, 2, 1])
+    head = st.empty()  # the title shows the count, known once the filters below are read
+    f1, f2, f3 = st.columns([2, 2, 1], vertical_alignment="bottom")
     min_score = f1.slider("Show scores from", 0, 100, 0, 5)
     all_required = f2.checkbox("Only candidates with every required skill")
     hide_rejected = f3.checkbox("Hide rejected")
@@ -323,13 +332,10 @@ else:
              and not (all_required and c["score_breakdown"].get("required_missing"))
              and not (hide_rejected and c["status"] == "rejected")]
 
-    st.subheader(f"Ranking: {len(shown)} of {len(ranking)} resumes")
+    head.subheader(f"Ranking: {len(shown)} of {len(ranking)} resumes")
     if weights := ranking[0]["score_breakdown"].get("weights") or {}:
         names = {"required": "required skills", "nice": "nice-to-have", "experience": "experience"}
-        st.caption("Score = " + " + ".join(f"{v}% {names[k]}" for k, v in weights.items())
-                   + ". Pick a **Decision** in the table: it goes to the approval queue and someone else approves it. "
-                     "**Email** drafts the message that matches the approved decision; it is sent only after approval. "
-                     "🔎 shows the details. ⚠️ = possible prompt injection or hidden text: review before any decision.")
+        st.caption("Score = " + " + ".join(f"{v}% {names[k]}" for k, v in weights.items()) + ".")
 
     pending = call("GET", "/approvals", params={"status": "pending"}) or []
     pending_decision = {a["payload"]["application_id"]: a["payload"]["decision"] for a in pending
@@ -340,35 +346,42 @@ else:
 
     picked_key = f"picked{job['id']}"
     picked = st.session_state[picked_key] = [a for a in st.session_state.get(picked_key, []) if a in metas]
-    b1, b2, hint = st.columns([1, 1, 4], vertical_alignment="center")
-    if b1.button(f"Compare ({len(picked)})", type="primary", disabled=len(picked) < 2):
+    b1, b2, hint, how = st.columns([1, 1, 2.5, 1.2], vertical_alignment="center")
+    if b1.button(f"Compare ({len(picked)})", type="primary", disabled=len(picked) < 2, width="stretch"):
         st.session_state.compare_job = job["id"]
-    if b2.button("Clear selection", disabled=not picked):
+    if b2.button("Clear selection", disabled=not picked, width="stretch"):
         st.session_state[picked_key], st.session_state.compare_job = [], None
         st.rerun()
     hint.caption("Tick two or more candidates in the **Compare** column, then click Compare." if len(picked) < 2
-                 else "Selected: " + ", ".join(metas[a]["name"] for a in picked))
+                 else "Selected: " + ", ".join(esc(metas[a]["name"]) for a in picked))
+    with how.popover("How it works", icon=":material/help:", width="stretch"):
+        st.markdown("- **Decision**: pick one in the table. It goes to Approvals, and someone else approves it.\n"
+                    "- **Email**: drafts the message that matches the approved decision. It is sent only after "
+                    "approval.\n"
+                    "- **🔎**: the details, the bias check and questions about the candidate.\n"
+                    "- **⚠️**: possible prompt injection or hidden text. Review before any decision.\n"
+                    "- **Compare**: tick two or more candidates, then click Compare.")
 
-    df = pd.DataFrame([{
+    df = pd.DataFrame([{  # the actions sit next to the name, so they are visible without scrolling sideways
         "Compare": c["application_id"] in picked,
         "Rank": c["rank"],
         "Candidate": m["name"],
-        "Source": SOURCE_BADGE.get(c.get("source", "upload"), c.get("source", "upload")),
+        "Details": "🔎",
         "Score": c["score"],
-        "Required skills": ", ".join(c["score_breakdown"].get("required_matched", [])),
-        "Missing": ", ".join(c["score_breakdown"].get("required_missing", [])),
-        "Years": c["score_breakdown"].get("years_experience"),
-        "Why": why(c),
         "⚠️": "⚠️" if risky(c) else "",
         "Decision": m["decision"],
         "Decision status": m["state"],
         "Email": m["email_label"],
-        "Details": "🔎",
+        "Years": c["score_breakdown"].get("years_experience"),
+        "Required skills": ", ".join(c["score_breakdown"].get("required_matched", [])),
+        "Missing": ", ".join(c["score_breakdown"].get("required_missing", [])),
+        "Source": SOURCE_BADGE.get(c.get("source", "upload"), c.get("source", "upload")),
+        "Why": why(c),
     } for c, m in zip(shown, meta)])
     editor_key = f"editor{job['id']}_{st.session_state.get('editor_rev', 0)}"
     email_key, view_key = f"email{job['id']}", f"view{job['id']}"
     st.data_editor(
-        df, key=editor_key, hide_index=True, width="stretch", height=min(38 * (len(df) + 1) + 3, 600),
+        df, key=editor_key, hide_index=True, width="stretch", height=min(38 * (len(df) + 1) + 3, 600), placeholder="—",
         disabled=[col for col in df.columns if col not in ("Compare", "Decision", "Email", "Details")],
         on_change=on_table_edit, args=(editor_key, meta, picked_key),
         column_config={
@@ -388,13 +401,15 @@ else:
                 width="medium", key=email_key, on_click=on_row_button, args=(email_key, "draft", meta),
                 help="Drafts the email that matches the approved decision. It goes to the approval queue."),
             "Details": st.column_config.ButtonColumn(
-                width="small", type="tertiary", key=view_key, on_click=on_row_button, args=(view_key, "view", meta)),
+                width="small", type="tertiary", key=view_key, on_click=on_row_button, args=(view_key, "view", meta),
+                pinned=True, help="Why this rank, the bias check, hidden text, and questions about the candidate."),
         })
 
     if draft := st.session_state.pop("last_draft", None):
-        st.success(f"{draft['kind'].capitalize()} email for {draft['name']} drafted and waiting in the approval queue. "
-                   "Edit and send it on the Approvals page.")
+        st.success(f"{draft['kind'].capitalize()} email for {esc(draft['name'])} drafted and waiting in the approval "
+                   "queue. Edit and send it on the Approvals page.", icon=":material/mail:")
         st.text(f"Subject: {draft['payload']['subject']}\n\n{draft['payload']['body']}")
+        st.page_link("pages/3_Approvals.py", label="Open Approvals", icon=":material/arrow_forward:")
 
     # -------------------------------------------------------------- comparison
     if st.session_state.get("compare_job") == job["id"] and len(picked) >= 2:
@@ -413,18 +428,20 @@ else:
                                                     json={"application_ids": [c["application_id"] for c in cands]})
         if advice := st.session_state[advice_key]:
             # The sentences can quote resume text: escaped so they cannot render links, images or formatting.
-            st.markdown(f"#### {md_escape(advice['recommendation'])}")
+            st.markdown(f"#### {esc(advice['recommendation'])}")
             for alt in advice["alternatives"]:
-                st.markdown(f"- {md_escape(alt['sentence'])}")
+                st.markdown(f"- {esc(alt['sentence'])}")
             if advice["needs_review"]:
-                st.warning(f"Review before deciding: possible prompt injection in {', '.join(advice['needs_review'])}.")
+                st.warning("Review before deciding: possible prompt injection in "
+                           f"{', '.join(map(esc, advice['needs_review']))}.", icon=":material/gpp_maybe:")
             st.caption("The recommended candidate is the highest score, chosen by the code; the AI only writes the "
                        "sentences" + (" (the AI did not answer, so they were written by simple rules)."
                                       if advice["llm_fallback"] else "."))
         with st.expander("Side-by-side details"):
             table = compare_table(cands, crit, metas)
             st.dataframe(table, width="stretch", height=35 * (len(table) + 1) + 3)
-            for tab, c in zip(st.tabs([f"#{c['rank']} {metas[c['application_id']]['name']}" for c in cands]), cands):
+            for tab, c in zip(st.tabs([f"#{c['rank']} {esc(metas[c['application_id']]['name'])}" for c in cands]),
+                              cands):
                 with tab:
                     json_panel(c, "cmp")
 
@@ -432,18 +449,18 @@ else:
     if cand := next((c for c in ranking if c["application_id"] == st.session_state.get("view_aid")), None):
         st.divider()
         head, close = st.columns([6, 1])
-        head.subheader(f"#{cand['rank']} {cand['name'] or cand['filename']}")
+        head.subheader(f"#{cand['rank']} {esc(cand['name'] or cand['filename'])}")
         if close.button("Close", key="close_details"):
             st.session_state.view_aid = None
             st.rerun()
         left, right = st.columns(2)
         with left:
-            st.markdown(f"**Why this rank:** {why(cand)}")
+            st.markdown(f"**Why this rank:** {esc(why(cand))}")
             for s in cand["justification"].get("strengths", []):
-                st.write(f"✅ {s}")
+                st.markdown(f"✅ {esc(s)}")
             for g in cand["justification"].get("gaps", []):
-                st.write(f"➖ {g}")
-            st.write(f"Email: {cand['email'] or 'not found in the resume'}")
+                st.markdown(f"➖ {esc(g)}")
+            st.markdown(f"Email: {esc(cand['email']) if cand['email'] else 'not found in the resume'}")
             if f := cand["fairness"]:
                 st.caption(f"Bias check: score with identity masked = {f['counterfactual_score']} (Δ {f['rank_delta']:+g}); "
                            f"masked: {', '.join(f.get('masked', []))}")
@@ -451,33 +468,35 @@ else:
                 st.warning("Possible prompt injection in this resume. Review it before any decision: "
                            + "; ".join(f"{x['type']} ({x['severity']})" for x in cand["flags"][:5]))
             if cand["hidden_text"]:
-                st.error(f"Hidden text removed before the AI saw it: “{cand['hidden_text'][:300]}”")
+                st.error(f"Hidden text removed before the AI saw it: “{esc(cand['hidden_text'][:300])}”")
         with right:
             st.markdown("**Ask about this candidate** (answered from this resume only)")
             q = st.text_input("Question", key=f"q{cand['application_id']}", label_visibility="collapsed",
                               placeholder="e.g. Has this person used Docker in production?")
             if q and st.button("Ask", key=f"ask{cand['application_id']}"):
                 if r := call("POST", f"/candidates/{cand['candidate_id']}/chat", json={"question": q}):
-                    st.write(r["answer"])
+                    st.markdown(esc(r["answer"]))  # answered from the resume: untrusted text
                     for ev in r["evidence"]:
-                        st.caption(f"“{ev}”")
-        st.markdown("**Full record (JSON)**")
-        json_panel(cand, "view")
+                        st.caption(f"“{esc(ev)}”")
+        with st.expander("Full record (JSON)", icon=":material/data_object:"):
+            json_panel(cand, "view")
 
-# ------------------------------------------------------------------ add resumes / jobs
+# ------------------------------------------------------------------ add resumes, learn weights
 st.divider()
 last_upload = st.session_state.pop("last_upload", None)
-with st.expander("Add resumes to this job", expanded=bool(last_upload) or not ranking):
+add_tab, learn_tab = st.tabs(["Add resumes", "Learn the weights from past hires"])
+with add_tab:
     if last_upload:
         if ok := sum(r["accepted"] for r in last_upload):
             st.success(f"{ok} resume(s) added and ranked above.")
         if refused := [r for r in last_upload if not r["accepted"]]:
-            st.warning("Refused: " + "; ".join(f"{r['filename']} ({r['error']})" for r in refused))
+            st.warning("Refused: " + "; ".join(f"{esc(r['filename'])} ({esc(r['error'])})" for r in refused))
     files = st.file_uploader("PDF, Word, OpenDocument, RTF, HTML, text, JSON or a photo (JPG, PNG, WebP)",
                              accept_multiple_files=True, key=f"files{job['id']}")
-    if files and st.button("Upload"):
+    if files and st.button("Upload", type="primary", icon=":material/upload:", disabled=not can("resumes:upload")):
         res = call("POST", f"/jobs/{job['id']}/resumes", files=[("files", (f.name, f.getvalue())) for f in files])
         if res:
             st.session_state.last_upload = res
             st.rerun()
-create_job_form(expanded=False)
+with learn_tab:
+    learn_weights(job)

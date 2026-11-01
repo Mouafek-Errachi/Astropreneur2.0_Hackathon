@@ -28,7 +28,7 @@ cp .env.example .env
 | `viewer@acme.test` | Read only |
 | `yasmine.b@hr-demo.test` | Employee: asks HR, opens tickets |
 
-Passwords are in `.env.example`. Log in as admin, tick "bulk" and click **Load demo data**.
+Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bottom of the Home page, tick the bulk option and click **Load demo data**. The menu shows each role only the pages it can use.
 
 ## What it does
 
@@ -40,7 +40,7 @@ Passwords are in `.env.example`. Log in as admin, tick "bulk" and click **Load d
 | Candidate follow-ups | Reminder drafts for candidates who have not answered our last message after `REMINDER_AFTER_DAYS`; follow-ups for unanswered inbox emails. A reminder is withdrawn automatically if the candidate writes back. | Follow-ups page, `POST /followups/scan` (n8n cron) |
 | Interview scheduling | Free slots from the interviewer calendar. At approval, either book a slot now, or send the candidate a single-use link to pick one. A booked slot is never offered twice. | Scheduling and Approvals pages, `/public/schedule/{token}` |
 | Employee questions | Answers from policy documents only, with sources; anything else is escalated. Employees can open tickets; the drafted reply waits for HR. | Ask HR page, `/qa/ask`, `/hr/tickets` |
-| HR operations | Interview co-pilot (probing questions when an answer is vague), team broadcasts with a fact check, recognition points and leaderboard. | HR Ops page; the n8n versions on "HR Ops via n8n" |
+| HR operations | Interview co-pilot (probing questions when an answer is vague), team broadcasts with a fact check, recognition points and leaderboard. | HR operations page; the n8n versions on "HR ops via n8n" (in the menu once `N8N_BASE_URL` is set) |
 | Project staffing & skill gaps | Upload a project charter and dependency manifests; the AI extracts the skills the project needs (a person confirms them); the gaps against the team's validated skills and free capacity are computed in code (missing, level too low, not enough capacity); internal options (upskill, rebalance, validate a declared skill, related skill) come first; for a gap marked "hire externally" the AI drafts a job description (checked for invented pay, links, exclusionary wording, employee names), and a second person approves it into a job that screening can rank against. Spec: [docs/specs/project-staffing-gap-analysis.md](docs/specs/project-staffing-gap-analysis.md) | Project Staffing page, `/projects`, `/skills/matrix`, `/employees/{id}/skills` |
 | Security visibility | Every blocked file, injection, hidden text and quarantine in one place, plus the hash-chained audit log. | AI Firewall page |
 
@@ -50,7 +50,7 @@ Passwords are in `.env.example`. Log in as admin, tick "bulk" and click **Load d
 2. **Compare:** tick the top 3, click Compare: recommendation and side-by-side table.
 3. **Four-eyes:** as the recruiter, propose "rejected" for a candidate and try to approve it yourself (refused). Log in as admin and approve it.
 4. **Candidate email:** draft the rejection, edit it in the approval queue, approve: it appears in "Sent emails".
-5. **Inbox:** classify, show the digest by urgency, and the phishing and injection emails quarantined (AI Firewall lights up).
+5. **Inbox:** click **Sort them now** to classify, show the digest by urgency, and the phishing and injection emails quarantined (AI Firewall lights up).
 6. **Scheduling:** propose slots, approve with "let the candidate choose", open the link from the sent email, pick a slot; the link then stops working.
 7. **Project staffing:** open "Payments API migration", review the AI's draft requirements and confirm them: gaps appear (Python short on capacity, PostgreSQL level too low, Kubernetes missing). Mark Kubernetes "hire externally", draft the job description, and approve it as the manager: a new job appears on Screening. Show the mobile-app charter flagged for its planted injection, with gaps unchanged.
 8. **Ask HR:** "How many days can I work remotely?" (answered with a source), then a question outside the policies (escalated).

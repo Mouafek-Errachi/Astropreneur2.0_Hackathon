@@ -1,72 +1,51 @@
-"""L1 presentation (Streamlit). A thin client: every rule lives in the API."""
-import requests
+"""L1 presentation (Streamlit). A thin client: every rule lives in the API.
+
+This file is the router: the log-in page until there is a token, then the pages the role may use, grouped in the menu.
+"""
+import html
+
 import streamlit as st
 
-from api import API_URL, call
+from api import call
+from nav import visible_pages
+from ui import chip, inject_css
 
-st.set_page_config(page_title="Secure AI HR", layout="wide")
-st.title("Secure AI HR System")
-st.caption("The agent executes, the human decides. Nothing is sent or recorded without a signed human approval.")
-
-DEMO_USERS = {
-    "recruiter@acme.test": "Recruiter — screens, drafts, approves",
-    "admin@acme.test": "Admin — everything + audit, API keys, demo data",
-    "manager@acme.test": "Manager — recruiter + sees and validates employee skills",
-    "viewer@acme.test": "Viewer — read only",
-    "yasmine.b@hr-demo.test": "Employee — asks HR, opens tickets",
-}
+st.set_page_config(page_title="Secure AI HR", page_icon=":material/shield_person:", layout="wide")
+inject_css()
 
 if "token" not in st.session_state:
-    with st.form("login"):
-        email = st.selectbox("Account", list(DEMO_USERS), format_func=lambda e: f"{e}  ·  {DEMO_USERS[e]}")
-        password = st.text_input("Password", type="password", help="Demo passwords are in .env.example")
-        if st.form_submit_button("Log in"):
-            r = requests.post(f"{API_URL}/auth/login", data={"username": email, "password": password}, timeout=10)
-            if r.ok:
-                st.session_state.token = r.json()["access_token"]
-                st.session_state.role = r.json()["role"]
-                st.rerun()
-            else:
-                st.error("Login failed" if r.status_code == 401 else f"Login failed ({r.status_code})")
+    st.navigation([st.Page("login.py", title="Log in", icon=":material/login:")], position="hidden").run()
     st.stop()
 
-me = call("GET", "/auth/me")
-st.session_state.me, st.session_state.role = me, me["role"]
-col1, col2 = st.columns([5, 1])
-col1.success(f"Logged in as {me['email']} ({me['role']})")
-if col2.button("Log out"):
-    st.session_state.clear()
-    st.rerun()
-health = call("GET", "/health") or {}
-if health.get("llm_provider") == "mock":
-    st.caption("AI: off (mock mode, rule-based outputs). Set LLM_PROVIDER=gemini or grok in .env to use the AI.")
-elif health.get("llm_ready"):
-    st.caption(f"AI: on ({health['llm_provider']}" + (f", fallback {health['llm_fallback']})" if health.get("llm_fallback") else ")"))
-else:
-    st.warning(f"AI: LLM_PROVIDER={health.get('llm_provider')} but its API key is empty in .env, so the simple rules are used.")
+if not st.session_state.get("me"):
+    st.session_state.me = call("GET", "/auth/me")
+if not (me := st.session_state.me):
+    st.stop()  # call() has already said what went wrong
+st.session_state.role = me["role"]
+if "health" not in st.session_state:
+    st.session_state.health = call("GET", "/health") or {}
 
-if "approvals:read" in me["scopes"]:
-    st.subheader("Today")
-    digest = call("GET", "/emails/digest", params={"hours": 24}) or {}
-    pending = call("GET", "/approvals", params={"status": "pending"}) or []
-    followups = [f for f in call("GET", "/followups") or [] if f["status"] == "open"]
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Waiting for your approval", len(pending))
-    c2.metric("Emails (24h)", digest.get("total", 0))
-    c3.metric("Need a human answer", digest.get("needs_reply", 0))
-    c4.metric("Open follow-ups", len(followups))
-    if digest.get("headline"):
-        st.info(digest["headline"])
+menu: dict[str, list] = {"": [st.Page("home.py", title="Home", icon=":material/home:", default=True)]}
+for e in visible_pages(me):
+    menu.setdefault(e.section, []).append(st.Page(e.path, title=e.title, icon=f":material/{e.icon}:", url_path=e.url))
+page = st.navigation(menu)
 
-if "admin" in me["scopes"]:
-    st.subheader("Demo data")
-    bulk = st.checkbox("Include 100 bulk resumes across the 5 jobs")
-    if st.button("Load demo data (5 jobs, resumes incl. 10 attacks, 43 emails)"):
-        r = call("POST", "/admin/demo/load", params={"bulk": str(bulk).lower()})
-        if r:
-            ok = sum(x["accepted"] for x in r["resumes"])
-            st.success(f"{r['jobs']} job, {ok}/{len(r['resumes'])} resumes accepted, {r['emails']} emails ingested")
-            st.dataframe([{k: x.get(k) for k in ("filename", "accepted", "risk_level", "hidden_text_found", "error")}
-                          for x in r["resumes"]], width="stretch")
+with st.sidebar:
+    st.html(f"<b>{html.escape(me['email'])}</b>")  # st.markdown would turn the address into a link
+    st.markdown(chip(me["role"].capitalize(), "blue"))
+    health = st.session_state.health
+    if health.get("llm_provider") == "mock":
+        st.markdown(chip("AI off", "gray", "smart_toy"), help="Mock mode: rule-based outputs. Set LLM_PROVIDER=gemini "
+                    "or grok in .env to use the AI.")
+    elif health.get("llm_ready"):
+        st.markdown(chip(f"AI on · {health['llm_provider']}", "green", "smart_toy"),
+                    help=f"Fallback: {health['llm_fallback']}" if health.get("llm_fallback") else None)
+    else:
+        st.markdown(chip("AI key missing", "orange", "smart_toy"),
+                    help=f"LLM_PROVIDER={health.get('llm_provider')} but its API key is empty in .env, so the simple "
+                         "rules are used.")
+    if st.button("Log out", icon=":material/logout:", width="stretch"):
+        st.session_state.clear()
+        st.rerun()
 
-st.write("Use the pages in the sidebar: inbox, screening, approvals, scheduling, follow-ups, Ask HR, HR Ops and AI Firewall.")
+page.run()

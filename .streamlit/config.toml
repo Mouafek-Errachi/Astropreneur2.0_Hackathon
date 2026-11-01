@@ -1,0 +1,23 @@
+[client]
+toolbarMode = "viewer"  # no Deploy button or developer options; keeps Settings (light/dark) and Print
+
+[browser]
+gatherUsageStats = false
+
+[server]
+maxUploadSize = 5  # MB per file, as MAX_UPLOAD_MB in .env: the uploader then shows the real limit
+
+[theme]
+# Red is the default accent and reads as "danger" next to Approve / Reject, so the accent is indigo.
+baseRadius = "0.75rem"
+buttonRadius = "0.6rem"
+metricValueFontSize = "1.9rem"
+headingFontSizes = ["2rem", "1.5rem", "1.2rem"]
+headingFontWeights = [700, 650, 600]
+showSidebarBorder = true
+
+[theme.light]
+primaryColor = "#4f46e5"
+
+[theme.dark]
+primaryColor = "#6366f1"

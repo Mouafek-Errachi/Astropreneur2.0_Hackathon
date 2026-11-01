@@ -3,58 +3,95 @@ import uuid
 import pandas as pd
 import streamlit as st
 
-from api import call, require_login
+from api import call, can, require_login
+from ui import empty, esc, human, page_header
 
 require_login()
-st.header("HR operations")
-tab1, tab2, tab3, tab4 = st.tabs(["Tickets", "Team broadcast", "Points & leaderboard", "Interview co-pilot"])
+page_header("HR operations", "Employee tickets, team broadcasts, recognition points and the interview co-pilot. Every "
+                             "message and award waits in Approvals.")
+writer = can("hr:write")
+ACTIONS = ["mentoring_session", "training_completed", "extra_task", "peer_review", "event_participation",
+           "completed_onboarding"]
+tab1, tab2, tab3, tab4 = st.tabs(["Tickets", "Team broadcast", "Recognition points", "Interview co-pilot"])
 
 with tab1:
-    st.dataframe(call("GET", "/hr/tickets") or [], width="stretch")
-    st.caption("Each ticket's drafted reply waits in Approvals.")
+    tickets = call("GET", "/hr/tickets") or []
+    if not tickets:
+        empty("No ticket yet.", "Employees open tickets from the Ask HR page.")
+    else:
+        st.caption("Each ticket's drafted reply waits in Approvals.")
+        st.dataframe([{"Employee": t["employee_id"], "Request": t["request_text"], "Category": t["category"],
+                       "Priority": human(t["priority"]), "Status": human(t["status"]), "Risk": human(t["risk_level"])}
+                      for t in tickets], hide_index=True, width="stretch",
+                     column_config={"Request": st.column_config.TextColumn(width="large")})
 
 with tab2:
+    st.caption("Turn rough notes into a message for a team. A check flags any number or link that was not in your notes, "
+               "and the person who drafts a broadcast cannot approve it.")
     teams = call("GET", "/hr/teams") or []
-    team = st.selectbox("Team", teams, format_func=lambda t: f"{t['display_name']} ({t['member_count']})")
-    notes = st.text_area("Rough notes", "team lunch fri 7 nov 12:30, cafeteria. bring your badge")
-    if st.button("Draft broadcast") and team:
+    with st.form("broadcast"):
+        team = st.selectbox("Team", teams, format_func=lambda t: f"{t['display_name']} ({t['member_count']} people)")
+        notes = st.text_area("Your notes", "team lunch fri 7 nov 12:30, cafeteria. bring your badge")
+        drafted = st.form_submit_button("Draft broadcast", type="primary", icon=":material/campaign:", disabled=not writer)
+    if drafted and team:
         r = call("POST", "/hr/broadcast", json={"target_team": team["id"], "message_prompt": notes})
         if r:
-            st.success(r["note"])
-            st.text(r["payload"]["subject"] + "\n\n" + r["payload"]["body"])
+            st.success(r["note"], icon=":material/check_circle:")
+            with st.container(border=True):
+                st.markdown(f"**{esc(r['payload']['subject'])}**")
+                st.text(r["payload"]["body"])
             if r["risk_level"] != "none":
-                st.warning(f"Risk {r['risk_level']}: check the flags in Approvals (invented figures or links).")
+                st.warning(f"Risk {r['risk_level']}: check the flags in Approvals (invented figures or links).",
+                           icon=":material/gpp_maybe:")
+            st.page_link("pages/3_Approvals.py", label="Open Approvals", icon=":material/arrow_forward:")
 
 with tab3:
-    emps = call("GET", "/hr/employees") or []
-    c1, c2 = st.columns(2)
-    emp = c1.selectbox("Employee", [e for e in emps if e["active"]], format_func=lambda e: f"{e['name']} · {e['team']}")
-    action = c2.selectbox("Action", ["mentoring_session", "training_completed", "extra_task", "peer_review",
-                                     "event_participation", "completed_onboarding"])
-    note = st.text_input("Note")
-    if st.button("Propose award") and emp:
-        r = call("POST", "/hr/points/award", json={"employee_id": emp["id"], "action_type": action, "note": note,
-                                                    "idempotency_key": uuid.uuid4().hex[:16]})
-        if r:
-            st.success("Award queued for approval (points come from the rule table, never from the request)")
-    board = call("GET", "/hr/leaderboard") or []
-    if board:
-        st.dataframe(pd.DataFrame(board)[["rank", "employee", "team", "points", "badge"]], hide_index=True,
-                     width="stretch")
+    left, right = st.columns([2, 3], gap="large")
+    with left, st.form("award"):
+        st.markdown("**Propose an award**")
+        emps = [e for e in call("GET", "/hr/employees") or [] if e["active"]]
+        emp = st.selectbox("Employee", emps, format_func=lambda e: f"{e['name']} · {e['team']}")
+        action = st.selectbox("For", ACTIONS, format_func=human)
+        note = st.text_input("Note", placeholder="Optional")
+        if st.form_submit_button("Propose award", type="primary", icon=":material/military_tech:",
+                                 disabled=not writer) and emp:
+            r = call("POST", "/hr/points/award", json={"employee_id": emp["id"], "action_type": action, "note": note,
+                                                        "idempotency_key": uuid.uuid4().hex[:16]})
+            if r:
+                st.success("Award sent to Approvals. The points come from the rule table, never from the request.")
+    with right:
+        st.markdown("**Leaderboard**")
+        board = call("GET", "/hr/leaderboard") or []
+        if not board:
+            empty("No points yet this period.")
+        else:
+            df = pd.DataFrame(board)[["rank", "employee", "team", "points", "badge"]]
+            st.dataframe(df, hide_index=True, width="stretch", column_config={
+                "rank": st.column_config.NumberColumn("#", width="small"), "employee": "Employee", "team": "Team",
+                "points": st.column_config.ProgressColumn("Points", min_value=0, max_value=int(df.points.max() or 1),
+                                                          format="%d"),
+                "badge": "Badge"})
 
 with tab4:
-    role = st.text_input("Job role", "Backend Engineer")
-    comps = st.text_input("Competencies (comma separated)", "python, sql, system design")
-    chunk = st.text_area("Latest transcript chunk", "Interviewer: Tell me about a hard bug.\nCandidate: we did stuff basically, things like debugging.")
-    if st.button("Analyse answer"):
-        r = call("POST", "/interview/assist", json={"job_role": role, "competencies": [c.strip() for c in comps.split(",") if c.strip()],
-                                                    "current_chunk": chunk})
+    st.caption("Suggests follow-up questions to the interviewer when an answer is vague. The candidate never sees it, "
+               "and it never scores anyone.")
+    with st.form("copilot"):
+        role = st.text_input("Job role", "Backend Engineer")
+        comps = st.text_input("Competencies (comma separated)", "python, sql, system design")
+        chunk = st.text_area("Latest part of the transcript", "Interviewer: Tell me about a hard bug.\n"
+                                                              "Candidate: we did stuff basically, things like debugging.")
+        analysed = st.form_submit_button("Analyse answer", type="primary", icon=":material/psychology:",
+                                         disabled=not can("interview:assist"))
+    if analysed:
+        r = call("POST", "/interview/assist", json={"job_role": role, "current_chunk": chunk,
+                                                    "competencies": [c.strip() for c in comps.split(",") if c.strip()]})
         if r:
             if r["weakness_detected"]:
-                st.warning(f"{r['severity']} gap in {r['competency']}: {r['detected_gap']}")
-                for q in r["suggested_probing_questions"]:
-                    st.write(f"❓ {q}")
+                st.warning(f"**{human(r['severity'])} gap in {esc(r['competency'])}:** {esc(r['detected_gap'])}",
+                           icon=":material/help:")
+                st.markdown("**Ask next:**\n" + "\n".join(f"- {esc(q)}" for q in r["suggested_probing_questions"]))
             else:
-                st.success("Answer looks solid.")
+                st.success("The answer looks solid.", icon=":material/thumb_up:")
             if r["security"]["injection_suspected"]:
-                st.error("The transcript contains an injection attempt; evaluation unaffected.")
+                st.error("The transcript contains an injection attempt; the evaluation was not affected.",
+                         icon=":material/shield:")
