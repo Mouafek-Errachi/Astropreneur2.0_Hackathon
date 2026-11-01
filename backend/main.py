@@ -1,4 +1,4 @@
-"""FastAPI app: L5 gateway middleware + the API routers. See docs/architecture/ for the layer diagrams."""
+"""FastAPI app: L5 gateway middleware + the API routers. See docs/diagrams/ for the diagrams."""
 import asyncio
 import logging
 import uuid

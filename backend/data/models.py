@@ -1,4 +1,4 @@
-"""L4 data model (see docs/architecture/03-classes.mmd).
+"""L4 data model (see docs/diagrams/10-data-model.md).
 
 Every business table carries tenant_id and every query is tenant-scoped. Primary keys are random
 UUIDs so IDs cannot be enumerated. JSON columns are stored as text for SQLite/Postgres portability;

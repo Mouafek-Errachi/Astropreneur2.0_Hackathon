@@ -69,7 +69,19 @@ FastAPI backend (`backend/`, separate virtualenv and `.env`). Its README explain
 
 ## Architecture
 
-Five layers (diagrams in [docs/architecture/](docs/architecture/)):
+**Diagrams for clients and juries: [docs/diagrams/](docs/diagrams/README.md)**, eleven numbered pages, each with a
+diagram and a short "how to read it":
+
+| # | Diagram | # | Diagram |
+|---|---|---|---|
+| 01 | [System context](docs/diagrams/01-system-context.md) | 07 | [Roles and permissions](docs/diagrams/07-roles-and-permissions.md) |
+| 02 | [Human approval state machine](docs/diagrams/02-human-approval-state-machine.md) | 08 | [CV screening pipeline](docs/diagrams/08-cv-screening-pipeline.md) |
+| 03 | [Skill gap workflow](docs/diagrams/03-skill-gap-workflow.md) | 09 | [Interview Copilot](docs/diagrams/09-interview-copilot.md) |
+| 04 | [Workforce analytics data flow](docs/diagrams/04-workforce-analytics-data-flow.md) | 10 | [Data model](docs/diagrams/10-data-model.md) |
+| 05 | [AI security guardrails](docs/diagrams/05-ai-security-guardrails.md) | 11 | [Deployment](docs/diagrams/11-deployment.md) |
+| 06 | [Five-layer architecture](docs/diagrams/06-five-layer-architecture.md) | | |
+
+Five layers:
 
 | Layer | Where | What |
 |---|---|---|
@@ -82,19 +94,21 @@ Five layers (diagrams in [docs/architecture/](docs/architecture/)):
 ```
 backend/
   main.py  config.py  schemas.py
-  api/            routes: auth, recruiting, inbox, approvals, scheduling, hr, security, staffing
+  api/            routes: auth, recruiting, inbox, approvals, scheduling, hr, security, staffing, intake, analytics
   orchestration/  workflow (propose/resume/cancel), ingestion, screening, learner, inbox, scheduling, followups, hr_ops,
-                  staffing, seed
+                  staffing, knowledge, analytics, seed
   agents/         llm (Gemini pool | Grok | mock), schemas, classifier, ranker, brief, compare, drafter, policy_rag,
-                  bias_auditor, candidate_chat, hr_ops, project_analyzer, jd_writer
-  data/           models, db, storage, vectors
+                  bias_auditor, candidate_chat, hr_ops, project_analyzer, jd_writer, insights
+  data/           models, db, storage, vectors, pipeline (application status history)
   security/       gateway, guard/ (files, sanitizer, injection), validator, executor, audit, events
-  tests/          91 tests: staffing, security, guard, human in the loop, pipeline, screening rules, brief, compare, learner, LLM
+  tests/          staffing, analytics, security, guard, human in the loop, pipeline, screening rules, brief, compare,
+                  learner, LLM, SMTP, knowledge, group email
 dashboard/        app.py + pages/
 data/             5 jobs, resumes (100 generated + attacks), emails, policies, calendar, past hires (learner sample)
 n8n/              n8n workflows + seed tables (shared with FastAPI) + Postman tests
 scripts/          generate_demo_data.py
-docs/architecture/
+docs/diagrams/    01-11 numbered diagrams (Mermaid, drawn by GitHub) + README index
+docs/specs/       feature specifications;  docs/roles.md: who can do what
 ```
 
 ## LLM providers

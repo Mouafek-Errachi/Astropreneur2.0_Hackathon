@@ -1,7 +1,7 @@
 """L5 Action Executor: the ONLY component that holds SMTP / calendar credentials and the ONLY
 code path that sends or records anything.
 
-Flow (docs/architecture/04-hitl-sequence.mmd):
+Flow (docs/diagrams/02-human-approval-state-machine.md):
   human approves -> signed Approval(payload_hash) -> verify signature + role + status == pending
   -> execute -> SentEmail / DB change -> hash-chained audit -> resume the workflow hook.
 """
