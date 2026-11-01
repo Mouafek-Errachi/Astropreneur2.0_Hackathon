@@ -156,25 +156,17 @@ def _skills_out(session: Session, employee_id: str) -> list[dict]:
 
 
 @router.get("/employees/{employee_id}/skills")
-def employee_skills(employee_id: str, p: Principal = Depends(require()), session: Session = Depends(get_session)):
-    if employee_id == "me":
-        employee_id = p.employee_id or ""
+def employee_skills(employee_id: str, p: Principal = Depends(require("skills:read")),
+                    session: Session = Depends(get_session)):
     emp = _employee(session, employee_id, p)
-    if p.employee_id != emp.id and "skills:read" not in p.scopes:
-        raise HTTPException(403, "Only the employee and their managers can see individual skill levels")
     return {"employee_id": emp.id, "name": f"{emp.first_name} {emp.last_initial}.", "skills": _skills_out(session, emp.id)}
 
 
 @router.put("/employees/{employee_id}/skills")
-def set_employee_skills(employee_id: str, body: EmployeeSkillsIn, p: Principal = Depends(require(human_only=True)),
+def set_employee_skills(employee_id: str, body: EmployeeSkillsIn,
+                        p: Principal = Depends(require("skills:manage", human_only=True)),
                         session: Session = Depends(get_session)):
-    """Employees declare their own skills (unvalidated until a manager confirms); managers add and validate."""
-    if employee_id == "me":
-        employee_id = p.employee_id or ""
+    """Managers add and validate an employee's skills."""
     emp = _employee(session, employee_id, p)
-    as_manager = "skills:manage" in p.scopes
-    if p.employee_id != emp.id and not as_manager:
-        raise HTTPException(403, "Only the employee and their managers can change these skills")
-    staffing.set_employee_skills(session, p.tenant_id, emp.id, [s.model_dump() for s in body.skills], p.subject,
-                                 as_manager=as_manager)
+    staffing.set_employee_skills(session, p.tenant_id, emp.id, [s.model_dump() for s in body.skills], p.subject)
     return {"employee_id": emp.id, "skills": _skills_out(session, emp.id)}

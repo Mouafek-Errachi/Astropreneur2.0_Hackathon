@@ -1,9 +1,9 @@
 """HR operations agents ported from the n8n workflows (n8n/workflows/api-*.json):
-interview co-pilot, team broadcast writer and helpdesk ticket triage. Prompts follow the n8n versions."""
+interview co-pilot, team broadcast writer and group email audience reader. Prompts follow the n8n versions."""
 import re
 
 from backend.agents.llm import complete_json
-from backend.agents.schemas import AudienceRequest, BroadcastDraft, InterviewAssist, TicketTriage
+from backend.agents.schemas import AudienceRequest, BroadcastDraft, InterviewAssist
 
 INTERVIEW_TASK = (
     "You are a real-time interview co-pilot for a human interviewer. You never speak to the candidate and never "
@@ -25,14 +25,6 @@ AUDIENCE_TASK = (
     "says so (e.g. 'engineers who know Kubernetes'). WHAT: the message itself, without the 'send to ...' part, with "
     "every fact kept exactly. Never invent recipients, addresses or facts."
 )
-TICKET_TASK = (
-    "You are an HR helpdesk assistant. Classify the employee request and draft a reply for HR staff to review, "
-    "citing the policy excerpts by their [doc_id section] label. Sensitive (harassment, discrimination, health, "
-    "grievances, disciplinary, safety, termination) always wins. Use only the requesting employee's context; never "
-    "reveal other employees' data or salaries."
-)
-
-
 def interview_assist(job_role: str, competencies: list[str], resume_summary: str, chunk: str) -> tuple[InterviewAssist, bool]:
     def mock() -> dict:
         cand = " ".join(l for l in chunk.splitlines() if l.lower().startswith("candidate")).lower() or chunk.lower()
@@ -85,21 +77,3 @@ def read_audience(request: str, job_titles: list[str], teams: dict[str, str],
     ctx = (f"JOB TITLES: {', '.join(job_titles)}\nTEAMS: {', '.join(f'{k} ({v})' for k, v in teams.items())}\n"
            f"SKILLS: {', '.join(skills)}")
     return complete_json(AUDIENCE_TASK, AudienceRequest, mock, untrusted=request, source="hr_draft", trusted_context=ctx)
-
-
-def triage_ticket(request_text: str, employee_context: str, policy_context: str, top_label: str) -> tuple[TicketTriage, bool]:
-    def mock() -> dict:
-        t = request_text.lower()
-        rules = [("Sensitive", ["harass", "discriminat", "bully", "sick", "medical", "grievance", "resign"]),
-                 ("Leave", ["leave", "vacation", "holiday", "day off"]), ("Payroll", ["salary", "payslip", "pay", "bank"]),
-                 ("Legal Document", ["certificate", "attestation", "contract"]), ("Benefits", ["insurance", "benefit"]),
-                 ("Policy Question", ["policy", "remote"])]
-        cat = next((c for c, ws in rules if any(w in t for w in ws)), "General HR")
-        return {"category": cat, "priority": "high" if cat == "Sensitive" else "normal", "requires_hr_action": True,
-                "hr_action_summary": request_text[:200],
-                "suggested_response": "Hello,\n\nThank you for your request. HR will review it and get back to you shortly."
-                                      + (f" Relevant policy: [{top_label}]." if top_label else "") + "\n\nHR Team",
-                "citations": [top_label] if top_label else []}
-
-    return complete_json(TICKET_TASK, TicketTriage, mock, untrusted=request_text, source="employee_request",
-                         trusted_context=f"EMPLOYEE: {employee_context}\n\nPOLICY EXCERPTS:\n{policy_context}")

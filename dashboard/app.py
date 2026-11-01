@@ -30,9 +30,12 @@ for e in visible_pages(me):
     menu.setdefault(e.section, []).append(st.Page(e.path, title=e.title, icon=f":material/{e.icon}:", url_path=e.url))
 page = st.navigation(menu)
 
+ROLE_LINE = {"admin": "Admin · everything", "manager": "Manager · validates skills", "recruiter": "Recruiter"}
 with st.sidebar:
-    st.html(f"<b>{html.escape(me['email'])}</b>")  # st.markdown would turn the address into a link
-    st.markdown(chip(me["role"].capitalize(), "blue"))
+    # st.html, not st.markdown, which would turn the address into a link
+    st.html(f'<div class="hr-me"><div class="avatar">{html.escape(me["email"][:1].upper())}</div>'
+            f'<div class="who"><b>{html.escape(me["email"])}</b>'
+            f'<span>{html.escape(ROLE_LINE.get(me["role"], me["role"].capitalize()))}</span></div></div>')
     health = st.session_state.health
     if health.get("llm_provider") == "mock":
         st.markdown(chip("AI off", "gray", "smart_toy"), help="Mock mode: rule-based outputs. Set LLM_PROVIDER=gemini "

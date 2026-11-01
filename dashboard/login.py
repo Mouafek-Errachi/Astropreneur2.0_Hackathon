@@ -8,8 +8,6 @@ DEMO_USERS = {
     "recruiter@acme.test": ("Recruiter", "Screens, drafts and approves."),
     "admin@acme.test": ("Admin", "Everything, plus the audit log, API keys and demo data."),
     "manager@acme.test": ("Manager", "Like a recruiter, and sees and validates employee skills."),
-    "viewer@acme.test": ("Viewer", "Read only."),
-    "yasmine.b@hr-demo.test": ("Employee", "Asks HR and opens tickets."),
 }
 
 _, middle, _ = st.columns([1, 1.7, 1])

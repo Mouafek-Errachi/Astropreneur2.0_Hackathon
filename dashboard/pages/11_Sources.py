@@ -29,14 +29,21 @@ else:
     c3.metric("Refused", int((~df["accepted"]).sum()), border=True, help="Wrong file type, duplicate, unreadable…")
     c4.metric("Flagged for review", int((df["accepted"] & flagged).sum()), border=True,
               help="Accepted, but possible prompt injection or hidden text: review before any decision.")
-    st.bar_chart(df.groupby(df["source"].map(human)).size().rename("CVs"), horizontal=True, height=180)
-    st.dataframe(pd.DataFrame({
+    by_source = df.groupby(df["source"].map(human)).size().rename("CVs").sort_values()
+    if len(by_source) > 1:  # one bar across the page says nothing
+        st.bar_chart(by_source, horizontal=True, height=40 + 32 * len(by_source))
+    else:
+        st.caption(f"All {len(df)} CVs came from: {by_source.index[0]}.")
+    table = pd.DataFrame({
         "Received": df["created_at"].map(when), "Source": df["source"].map(human), "Job": df["job_id"].map(job_names),
         "File": df["filename"],
         "Status": df.apply(lambda r: ("⚠️ review" if r["risk_level"] in ("medium", "high") else "✅ accepted")
                            if r["accepted"] else f"❌ {r['error']}", axis=1),
-        "Flags": df["flags"].map(lambda f: ", ".join(human(x) for x in f)), "Reference": df["source_ref"],
-        "By": df["actor"]}), hide_index=True, width="stretch")
+        "Flags": df["flags"].map(lambda f: ", ".join(human(x) for x in f)), "Reference": df["source_ref"].fillna(""),
+        "By": df["actor"]})
+    empty_cols = [c for c in ("Flags", "Reference") if not table[c].astype(str).str.strip().any()]
+    st.dataframe(table.drop(columns=empty_cols), hide_index=True, width="stretch",
+                 column_config={"File": st.column_config.TextColumn(width="medium")})
 
 st.subheader("Connect a source")
 with st.expander("How outside tools send CVs", icon=":material/integration_instructions:"):

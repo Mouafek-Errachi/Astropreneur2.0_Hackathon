@@ -23,7 +23,7 @@ def test_known_skills_are_found_and_common_words_are_not():
     assert not fallback and crit.required_skills == ["terraform"] and crit.nice_to_have == ["docker"]
 
 
-def test_criteria_from_text_endpoint(client, recruiter, viewer):
+def test_criteria_from_text_endpoint(client, recruiter):
     job = client.post("/jobs", json={"title": "Brief Job", "required_skills": ["azure"]}, headers=recruiter).json()
     url = f"/jobs/{job['id']}/criteria/from-text"
     r = client.post(url, json={"text": "Python and SQL required, Linux is a plus, at least 3 years"}, headers=recruiter)
@@ -32,5 +32,5 @@ def test_criteria_from_text_endpoint(client, recruiter, viewer):
     assert r.json()["llm_fallback"] is False
     saved = next(j for j in client.get("/jobs", headers=recruiter).json() if j["id"] == job["id"])
     assert saved["criteria"]["required_skills"] == ["azure"]  # reading the request saves nothing
-    assert client.post(url, json={"text": "Python"}, headers=viewer).status_code == 403
+    assert client.post(url, json={"text": "Python"}).status_code == 401
     assert client.post(url, json={"text": "x" * 2001}, headers=recruiter).status_code == 422

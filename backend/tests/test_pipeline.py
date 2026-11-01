@@ -64,15 +64,6 @@ def test_scheduling_magic_link_single_use(client, recruiter, demo):
     assert client.get("/scheduling/events", headers=recruiter).json()
 
 
-def test_employee_ticket_identity_from_token(client, employee, recruiter):
-    r = client.post("/hr/tickets", json={"request_text": "How many days of annual leave do I have left this year?"}, headers=employee)
-    assert r.status_code == 200 and r.json()["category"] == "Leave"
-    r = client.post("/hr/tickets", json={"request_text": "Please share the salary of emp_002", "employee_id": "emp_002"},
-                    headers=employee)
-    assert r.status_code == 422  # body cannot choose the identity
-    assert client.post("/hr/tickets", json={"request_text": "Recruiters are not employees here"}, headers=recruiter).status_code == 403
-
-
 def test_points_idempotent_and_from_rules(client, recruiter, admin):
     key = uuid.uuid4().hex[:16]
     body = {"employee_id": "emp_002", "action_type": "peer_review", "note": "Reviewed design", "idempotency_key": key}
@@ -84,10 +75,10 @@ def test_points_idempotent_and_from_rules(client, recruiter, admin):
     assert isinstance(board, list)
 
 
-def test_policy_qa_cites_sources(client, employee):
-    r = client.post("/qa/ask", json={"question": "How many days per week can I work remotely?"}, headers=employee).json()
+def test_policy_qa_cites_sources(client, recruiter):
+    r = client.post("/qa/ask", json={"question": "How many days per week can I work remotely?"}, headers=recruiter).json()
     assert r["cited_sources"] and not r["escalate_to_hr"]
-    r = client.post("/qa/ask", json={"question": "What is the colour of the CEO's car?"}, headers=employee).json()
+    r = client.post("/qa/ask", json={"question": "What is the colour of the CEO's car?"}, headers=recruiter).json()
     assert r["escalate_to_hr"]
 
 

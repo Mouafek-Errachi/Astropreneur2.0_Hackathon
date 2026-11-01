@@ -44,5 +44,3 @@ def test_unclear_audience_is_refused(client, recruiter):
     assert r.status_code == 422 and "NO_AUDIENCE" in r.json()["detail"]
 
 
-def test_employees_cannot_send_group_emails(client, employee):
-    assert propose(client, employee, "send to all backend engineers that pizza is free").status_code == 403

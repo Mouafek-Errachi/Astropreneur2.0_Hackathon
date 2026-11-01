@@ -9,9 +9,10 @@ from backend.data import vectors
 from backend.data.models import PolicyChunk
 from backend.security.validator import check_citations
 
-TASK = ("Answer the employee question using ONLY the policy excerpts in the trusted context. Cite sources "
-        "using their [doc_id section] labels exactly. If the excerpts do not answer it, say so and set "
-        "escalate_to_hr=true. Never reveal information about other employees.")
+TASK = ("You are the company's HR assistant, asked by employees and HR staff. Answer the latest question using ONLY "
+        "the company document excerpts in the trusted context; the earlier conversation only tells you what a "
+        "follow-up refers to. Cite sources using their [doc_id section] labels exactly. If the excerpts do not "
+        "answer it, say so and set escalate_to_hr=true. Never reveal information about other employees.")
 MIN_RELEVANCE = 0.2
 _WORD = re.compile(r"[a-z]{3,}")
 STOPWORDS = {"the", "and", "for", "are", "can", "how", "what", "when", "where", "who", "why", "which", "does", "did",
@@ -38,19 +39,23 @@ def search(session: Session, tenant_id: int, question: str, k: int = 4) -> list[
     return sorted((s for s in scored if s[0] > 0), key=lambda x: -x[0])[:k]
 
 
-def answer(question: str, hits: list[tuple[float, PolicyChunk]], employee_context: str = "") -> tuple[PolicyAnswer, bool]:
+def answer(question: str, hits: list[tuple[float, PolicyChunk]],
+           history: list[tuple[str, str]] | None = None) -> tuple[PolicyAnswer, bool]:
+    """history: earlier (role, text) turns. They go in with the question as untrusted text, never as instructions."""
     if not hits or hits[0][0] < MIN_RELEVANCE:
         return PolicyAnswer(answer="I could not find this in the HR policies. I've flagged it for the HR team.",
                             cited_sources=[], confidence="low", escalate_to_hr=True), False
     context = "\n\n".join(f"[{label(c)}] {c.title}: {c.content}" for _, c in hits)
-    if employee_context:
-        context = f"EMPLOYEE: {employee_context}\n\nPOLICY EXCERPTS:\n{context}"
 
     def mock() -> dict:
         top = hits[0][1]
         return {"answer": top.content[:1200], "cited_sources": [label(top)], "confidence": "medium", "escalate_to_hr": False}
 
-    result, fallback = complete_json(TASK, PolicyAnswer, mock, untrusted=question, source="employee_question",
+    asked = question
+    if history:
+        asked = ("EARLIER CONVERSATION:\n" + "\n".join(f"{role}: {text[:800]}" for role, text in history[-6:])
+                 + f"\n\nLATEST QUESTION: {question}")
+    result, fallback = complete_json(TASK, PolicyAnswer, mock, untrusted=asked, source="employee_question",
                                      trusted_context=context)
     result.cited_sources = check_citations(result.cited_sources, {label(c) for _, c in hits})
     if not result.cited_sources and not result.escalate_to_hr:

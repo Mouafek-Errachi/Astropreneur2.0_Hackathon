@@ -129,12 +129,14 @@ class ChooseSlot(Strict):
     slot_index: int = Field(ge=0, le=10)
 
 
+class ChatTurn(Strict):
+    role: Literal["user", "assistant"]
+    text: str = Field(max_length=2500)
+
+
 class AskRequest(Strict):
     question: str = Field(min_length=3, max_length=1000)
-
-
-class TicketCreate(Strict):
-    request_text: str = Field(min_length=10, max_length=3000)
+    history: list[ChatTurn] = Field(default_factory=list, max_length=6)  # earlier turns, for follow-up questions
 
 
 class BroadcastRequest(Strict):
@@ -181,7 +183,7 @@ class GapDecision(Strict):
 class EmployeeSkillIn(Strict):
     skill: str = Field(min_length=1, max_length=60)
     level: int = Field(ge=1, le=4)
-    validated: bool = True  # only honoured for managers
+    validated: bool = True  # False records a skill a manager still has to confirm
 
 
 class EmployeeSkillsIn(Strict):

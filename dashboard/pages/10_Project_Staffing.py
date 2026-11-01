@@ -9,41 +9,11 @@ from ui import esc, page_header
 require_login()
 me = st.session_state.get("me") or call("GET", "/auth/me")
 scopes = set(me["scopes"])
-if "projects:read" in scopes:
-    page_header("Project staffing", "What each project needs, what the team covers, and a job description for each true "
-                                    "gap. The AI extracts and drafts; people confirm, decide and approve.")
-else:
-    page_header("My skills", "Declare your skills and level. They count for project staffing once a manager validates them.")
+page_header("Project staffing", "What each project needs, what the team covers, and a job description for each true "
+                                "gap. The AI extracts and drafts; people confirm, decide and approve.")
 
-LEVELS = {1: "1 beginner", 2: "2 working", 3: "3 senior", 4: "4 expert"}
 KIND = {"missing": "🔴 missing", "insufficient_level": "🟠 level too low", "insufficient_capacity": "🟡 not enough capacity"}
 
-
-def my_skills() -> None:
-    data = call("GET", "/employees/me/skills")
-    if not data:
-        return
-    st.subheader(f"My skills ({esc(data['name'])})")
-    st.caption("Skills you declare count for project staffing only after a manager validates them.")
-    if data["skills"]:
-        st.dataframe([{"skill": s["skill"], "level": LEVELS[s["level"]],
-                       "status": "✅ validated" if s["validated"] else "⏳ waiting for a manager"} for s in data["skills"]],
-                     hide_index=True, width="stretch")
-    with st.form("my_skill"):
-        c1, c2 = st.columns([3, 2])
-        skill = c1.text_input("Skill", placeholder="e.g. Kubernetes")
-        level = c2.selectbox("Level", list(LEVELS), format_func=LEVELS.get, index=1)
-        if st.form_submit_button("Add or update") and skill.strip():
-            if call("PUT", "/employees/me/skills", json={"skills": [{"skill": skill.strip(), "level": level}]}):
-                st.rerun()
-
-
-if "projects:read" not in scopes:  # employees: only their own skill profile
-    if me.get("employee_id"):
-        my_skills()
-    else:
-        st.info("Your role does not have access to this page.")
-    st.stop()
 
 can_write = "projects:write" in scopes
 projects = call("GET", "/projects") or []
@@ -224,5 +194,3 @@ with tab_matrix:
             st.caption("Individual levels are visible to managers only.")
     else:
         st.info("No skills recorded yet.")
-    if me.get("employee_id"):
-        my_skills()

@@ -44,16 +44,6 @@ def recruiter(client):
 
 
 @pytest.fixture(scope="session")
-def viewer(client):
-    return login(client, "viewer@acme.test", "Viewer#2026!")
-
-
-@pytest.fixture(scope="session")
-def employee(client):
-    return login(client, "yasmine.b@hr-demo.test", "Employee#2026!")
-
-
-@pytest.fixture(scope="session")
 def demo(client, admin):
     r = client.post("/admin/demo/load", headers=admin)
     assert r.status_code == 200, r.text

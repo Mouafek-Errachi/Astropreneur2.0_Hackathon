@@ -1,6 +1,6 @@
 # Secure AI HR System
 
-Hackathon prototype (ASTROPRENEUR 2.0): AI agents that take over daily HR work — resume screening and ranking, inbox triage by urgency, reply drafting, follow-ups, interview scheduling, policy Q&A, employee tickets, team broadcasts and recognition points — while staying secure against the untrusted content they read.
+Hackathon prototype (ASTROPRENEUR 2.0): AI agents that take over daily HR work — resume screening and ranking, inbox triage by urgency, reply drafting, follow-ups, interview scheduling, policy Q&A, group emails, team broadcasts and recognition points — while staying secure against the untrusted content they read.
 
 **Golden rule: the agent executes, the human decides.** Agents only *propose* actions. Nothing is sent or recorded until a human approves it; the approval is signed and verified by the executor, the only component that can send mail or change records. Decisions about a candidate, learned weights and broadcasts need a second person (four-eyes rule).
 
@@ -25,8 +25,6 @@ cp .env.example .env
 | `admin@acme.test` | Everything, plus audit log, API keys and demo data |
 | `recruiter@acme.test` | Screens, drafts and approves |
 | `manager@acme.test` | Recruiter, plus sees and validates individual employee skills |
-| `viewer@acme.test` | Read only |
-| `yasmine.b@hr-demo.test` | Employee: asks HR, opens tickets |
 
 Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bottom of the Home page, tick the bulk option and click **Load demo data**. The menu shows each role only the pages it can use.
 
@@ -39,7 +37,7 @@ Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bott
 | Automatic replies | Drafts for inbox emails (candidate-scoped), and candidate emails written from the candidate's own file. A rejection needs an approved decision first. | Inbox and Screening pages |
 | Candidate follow-ups | Reminder drafts for candidates who have not answered our last message after `REMINDER_AFTER_DAYS`; follow-ups for unanswered inbox emails. A reminder is withdrawn automatically if the candidate writes back. | Follow-ups page, `POST /followups/scan` (n8n cron) |
 | Interview scheduling | Free slots from the interviewer calendar. At approval, either book a slot now, or send the candidate a single-use link to pick one. A booked slot is never offered twice. | Scheduling and Approvals pages, `/public/schedule/{token}` |
-| Employee questions | Answers from policy documents only, with sources; anything else is escalated. Employees can open tickets; the drafted reply waits for HR. | Ask HR page, `/qa/ask`, `/hr/tickets` |
+| Employee questions | HR staff ask the assistant: answers from policy documents only, with sources; anything else is escalated. Employees' own requests come in through the n8n employee portal. | Ask HR page, `/qa/ask` |
 | HR operations | Interview co-pilot (probing questions when an answer is vague), team broadcasts with a fact check, recognition points and leaderboard. | HR operations page; the n8n versions on "HR ops via n8n" (in the menu once `N8N_BASE_URL` is set) |
 | Group emails | HR writes "send to all backend engineers that the meeting is tomorrow at 18:00": the AI reads who and what, the code finds the active employees by job title, team or skill (the AI never picks an address), and the AI writes the email. A second person checks the recipient list (people can be removed, not added) and the message, then each person gets their own copy. | HR operations page, "Email a group" tab, `POST /hr/group-email` |
 | Project staffing & skill gaps | Upload a project charter and dependency manifests; the AI extracts the skills the project needs (a person confirms them); the gaps against the team's validated skills and free capacity are computed in code (missing, level too low, not enough capacity); internal options (upskill, rebalance, validate a declared skill, related skill) come first; for a gap marked "hire externally" the AI drafts a job description (checked for invented pay, links, exclusionary wording, employee names), and a second person approves it into a job that screening can rank against. Spec: [docs/specs/project-staffing-gap-analysis.md](docs/specs/project-staffing-gap-analysis.md) | Project Staffing page, `/projects`, `/skills/matrix`, `/employees/{id}/skills` |
@@ -52,7 +50,10 @@ Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bott
 3. **Four-eyes:** as the recruiter, propose "rejected" for a candidate and try to approve it yourself (refused). Log in as admin and approve it.
 4. **Candidate email:** draft the rejection, edit it in the approval queue, approve: it appears in "Sent emails".
 5. **Inbox:** click **Sort them now** to classify, show the digest by urgency, and the phishing and injection emails quarantined (AI Firewall lights up).
-6. **Scheduling:** propose slots, approve with "let the candidate choose", open the link from the sent email, pick a slot; the link then stops working.
+6. **Interview:** on Screening, set a candidate's Decision to "interview" and have someone else approve it. The Email cell
+   then says **📅 Invite to interview**: pick the interviewer, and free slots come from the HR calendar. In Approvals,
+   book one slot, or approve with "let the candidate choose", open the link from the sent email and pick a slot (the
+   link then stops working). The booked interview appears on the Scheduling page.
 7. **Project staffing:** open "Payments API migration", review the AI's draft requirements and confirm them: gaps appear (Python short on capacity, PostgreSQL level too low, Kubernetes missing). Mark Kubernetes "hire externally", draft the job description, and approve it as the manager: a new job appears on Screening. Show the mobile-app charter flagged for its planted injection, with gaps unchanged.
 8. **Ask HR:** "How many days can I work remotely?" (answered with a source), then a question outside the policies (escalated).
 
@@ -70,7 +71,7 @@ Five layers (diagrams in [docs/architecture/](docs/architecture/)):
 |---|---|---|
 | L1 Presentation | `dashboard/` | Streamlit thin client (all rules live in the API) |
 | L2 Orchestration | `backend/orchestration/`, `n8n/` | Workflows: ingestion, screening (criteria, rescore, compare, weight learning), inbox, scheduling, follow-ups, HR ops. A workflow pauses on a pending action and resumes after the human decision. n8n handles triggers (IMAP, cron, webhooks) and calls the API with a scoped key, see [n8n/FASTAPI_INTEGRATION.md](n8n/FASTAPI_INTEGRATION.md). |
-| L3 AI Agents | `backend/agents/` | Classifier, Ranker, Brief (request -> criteria), Compare, Reply Drafter, Policy RAG, Bias Auditor, Candidate Chat, Interview co-pilot, Broadcast writer, Ticket triage. No tools, JSON only. |
+| L3 AI Agents | `backend/agents/` | Classifier, Ranker, Brief (request -> criteria), Compare, Reply Drafter, Policy RAG, Bias Auditor, Candidate Chat, Interview co-pilot, Broadcast writer. No tools, JSON only. |
 | L4 Data | `backend/data/` | SQLModel on SQLite (default) or Postgres, UUID keys, embeddings (pgvector-ready), quarantine + UUID file storage. An outdated dev SQLite file is backed up and recreated automatically. |
 | L5 Security | `backend/security/` | Gateway, Injection Guard, Output Validator, Executor, Audit, Security events |
 
