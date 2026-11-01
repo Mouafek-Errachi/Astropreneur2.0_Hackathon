@@ -187,23 +187,33 @@ def _write_version(session: Session, project: Project, items: list[dict], *, con
 
 
 def analyze(session: Session, project: Project, actor: str) -> dict:
-    """Extracts a DRAFT version of the requirements. It is not used for gaps until a human confirms it."""
+    """Extracts a DRAFT version of the requirements from the uploaded documents AND the project's own name and
+    summary, so a project without documents still gets requirements. Nothing is used for gaps until a human confirms."""
     tax = taxonomy(session)
     vocab = {k: v["synonyms"] for k, v in tax.items()}
     docs = session.exec(select(ProjectDocument).where(ProjectDocument.project_id == project.id)).all()
     charter = "\n\n".join(d.text for d in docs if d.kind == "charter")  # visible text only, hidden text never sent
+    description = f"{project.name}\n{project.summary}".strip()
     needs: dict[str, dict] = {}
     model_flag, fallback = False, False
-    if charter.strip():
-        extracted, fallback = project_analyzer.extract_requirements(charter, vocab)
-        model_flag = extracted.injection_attempt_observed
+
+    def extract(text: str, source: str) -> None:
+        nonlocal model_flag, fallback
+        extracted, used_fallback = project_analyzer.extract_requirements(text, vocab)
+        model_flag, fallback = model_flag or extracted.injection_attempt_observed, fallback or used_fallback
         for n in extracted.skills:
             skill = normalize(n.skill, tax)
-            needs.setdefault(skill, {**n.model_dump(), "skill": skill, "source": "llm"})
+            needs.setdefault(skill, {**n.model_dump(), "skill": skill, "source": source})
+
+    # Most detailed source first: charter, then manifests, then the project description fills in what they miss.
+    if charter.strip():
+        extract(charter, "llm")
     for d in docs:
         if d.kind == "manifest":
             for n in manifest_skills(d.original_filename, d.text, tax):
                 needs.setdefault(n["skill"], n)
+    if description:
+        extract(description, "project")
     _write_version(session, project, list(needs.values()), confirmed=False, actor=actor)
     if model_flag:
         events.record(session, tenant_id=project.tenant_id, source="project_document", source_id=str(project.id),
@@ -270,7 +280,7 @@ def compute_gaps(session: Session, project: Project) -> list[SkillGap]:
         for es in skills[req.skill]:
             if not es.validated and es.level >= req.level:
                 options.append({"employee_id": es.employee_id, "level": es.level, "kind": "validate",
-                                "reason": f"self-declared {req.skill} level {es.level}, not validated by a manager yet"})
+                                "reason": f"{req.skill} level {es.level} recorded, not validated by a manager yet"})
         for rel in tax.get(req.skill, {}).get("related", []):
             for es in skills[rel]:
                 if es.validated and es.level >= 2 and all(o["employee_id"] != es.employee_id for o in options):
@@ -409,9 +419,9 @@ def seed_employee_skills(session: Session, tenant_id: int) -> None:
     session.commit()
 
 
-def set_employee_skills(session: Session, tenant_id: int, employee_id: str, items: list[dict], actor: str,
-                        as_manager: bool) -> list[EmployeeSkill]:
-    """Employees declare their own skills (unvalidated); managers add or validate them. Upsert by skill."""
+def set_employee_skills(session: Session, tenant_id: int, employee_id: str, items: list[dict],
+                        actor: str) -> list[EmployeeSkill]:
+    """A manager adds, changes or validates skills. Upsert by skill; unvalidated skills never cover a gap."""
     tax = taxonomy(session)
     existing = {es.skill: es for es in session.exec(select(EmployeeSkill).where(EmployeeSkill.employee_id == employee_id))}
     for it in items:
@@ -419,14 +429,12 @@ def set_employee_skills(session: Session, tenant_id: int, employee_id: str, item
         es = existing.get(skill) or EmployeeSkill(tenant_id=tenant_id, employee_id=employee_id, skill=skill)
         es.level = int(it["level"])
         es.last_confirmed = utcnow()
-        if as_manager:
-            es.source, es.validated, es.validated_by = "manager", bool(it.get("validated", True)), actor
-        else:  # any self edit needs a manager again
-            es.source, es.validated, es.validated_by = "self", False, ""
+        validated = bool(it.get("validated", True))
+        es.source, es.validated, es.validated_by = "manager", validated, actor if validated else ""
         session.add(es)
     session.commit()
     audit.log(session, actor=actor, event="employee.skills_updated", tenant_id=tenant_id, target=f"employee:{employee_id}",
-              detail={"skills": [i["skill"] for i in items], "as_manager": as_manager})
+              detail={"skills": [i["skill"] for i in items]})
     return list(session.exec(select(EmployeeSkill).where(EmployeeSkill.employee_id == employee_id)))
 
 

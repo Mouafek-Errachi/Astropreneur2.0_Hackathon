@@ -21,7 +21,10 @@ TASK = (
 
 LEVELS = [(re.compile(r"\b(expert|principal|architect)\b", re.I), 4), (re.compile(r"\b(senior|lead|advanced)\b", re.I), 3),
           (re.compile(r"\b(junior|beginner|intern)\b", re.I), 1)]
-HEADCOUNT = re.compile(r"\b(\d{1,2})\s*(?:people|persons|engineers|developers|devs|experts|profiles)\b", re.I)
+NUMBERS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+HEADCOUNT = re.compile(r"\b(\d{1,2}|" + "|".join(NUMBERS) + r")\s+(?:[\w-]+\s+)?"
+                       r"(?:people|persons?|engineers?|developers?|devs?|experts?|profiles?)\b", re.I)
+CLAUSES = re.compile(r"[.;!?]\s+|\s+and\s+|\s+plus\s+", re.I)  # prose: one clause per skill
 PERCENT = re.compile(r"\b(\d{2,3})\s*%")
 
 
@@ -38,16 +41,20 @@ def _line_needs(line: str, vocab: dict[str, list[str]]) -> list[dict]:
         return []
     level = next((lv for rx, lv in LEVELS if rx.search(line)), 2)
     hc = HEADCOUNT.search(line)
+    count = int(NUMBERS.get(hc.group(1).lower(), hc.group(1))) if hc else 1
     pct = PERCENT.search(line)
     alloc = int(pct.group(1)) if pct else 50 if re.search(r"half[- ]time|part[- ]time", low) else 100
-    return [{"skill": s, "level": level, "headcount": int(hc.group(1)) if hc else 1,
+    return [{"skill": s, "level": level, "headcount": count,
              "allocation_pct": max(10, min(alloc, 100)), "evidence": line.strip(" -*\t")[:200]} for s in found]
 
 
 def _mock(text: str, vocab: dict[str, list[str]]) -> dict:
-    """Reads the staffing bullets of the charter (or every line when there are none), one need per skill."""
+    """Reads the staffing bullets of the charter, or, when there are none (a project summary written as prose),
+    every sentence clause, so 'a senior Python dev and React half time' gives each skill its own level and time."""
     lines = [l for l in text.splitlines() if l.strip()]
     bullets = [l for l in lines if l.lstrip().startswith(("-", "*", "•"))]
+    if not bullets:
+        lines = [c for l in lines for c in CLAUSES.split(l) if c.strip()]
     needs: dict[str, dict] = {}
     for line in bullets or lines:
         for n in _line_needs(line, vocab):

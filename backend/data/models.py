@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -30,8 +31,8 @@ class User(SQLModel, table=True):
     tenant_id: int = Field(foreign_key="tenant.id", index=True)
     email: str = Field(index=True, unique=True)
     hashed_password: str
-    role: str = "viewer"  # admin | recruiter | viewer | employee
-    employee_id: Optional[str] = None  # links an employee login to hr_employees
+    role: str = "recruiter"  # recruiter | manager | admin (see security/gateway.py ROLE_SCOPES)
+    employee_id: Optional[str] = None  # the HR user's own employee record: no self-awards, no editing own skills
     active: bool = True
 
 
@@ -392,6 +393,31 @@ class SkillGap(SQLModel, table=True):
     status: str = "open"  # open | jd_proposed | hiring | closed
     action_id: Optional[uuid.UUID] = None
     job_offer_id: Optional[uuid.UUID] = None
+
+
+# ------------------------------------------------------------------ workforce analytics
+class PipelineEvent(SQLModel, table=True):
+    """One row per application status change (data/pipeline.py), so time in each stage can be measured."""
+
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    application_id: uuid.UUID = Field(foreign_key="application.id", index=True)
+    from_status: str = ""  # "" when the application is created
+    to_status: str
+    actor: str = ""
+    at: datetime = Field(default_factory=utcnow)
+
+
+class MetricSnapshot(SQLModel, table=True):
+    """Daily aggregates for trend charts. Never individual rows: see docs/specs/workforce-telemetry-analytics.md."""
+
+    __table_args__ = (UniqueConstraint("tenant_id", "day", "metric", "team_id", name="uq_snapshot_day_metric_team"),)
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    day: str = Field(index=True)  # YYYY-MM-DD
+    metric: str = Field(index=True)
+    team_id: str = ""  # "" = whole company
+    value: float = 0.0
 
 
 # ------------------------------------------------------------------ L5 observability

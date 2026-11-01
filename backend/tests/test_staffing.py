@@ -14,11 +14,6 @@ from backend.security.validator import check_job_description
 from backend.tests.conftest import login
 
 
-@pytest.fixture(scope="module")
-def manager(client):
-    return login(client, "manager@acme.test", "Manager#2026!")
-
-
 def _project(client, headers, name):
     return next(p for p in client.get("/projects", headers=headers).json() if p["name"] == name)
 
@@ -70,9 +65,10 @@ def test_gaps_are_deterministic_and_respect_capacity(client, recruiter):
     assert first["sql"]["kind"] == "insufficient_level"  # nobody validated at senior level
 
 
-# 3 ---------------------------------------------------------------- self-declared skills do not count until validated
-def test_unvalidated_skill_does_not_cover_until_a_manager_validates(client, recruiter, employee, manager):
-    r = client.put("/employees/me/skills", json={"skills": [{"skill": "kafka", "level": 3}]}, headers=employee)
+# 3 ---------------------------------------------------------------- unvalidated skills do not count until validated
+def test_unvalidated_skill_does_not_cover_until_a_manager_validates(client, recruiter, manager):
+    r = client.put("/employees/emp_001/skills", json={"skills": [{"skill": "kafka", "level": 3, "validated": False}]},
+                   headers=manager)
     assert r.status_code == 200 and not next(s for s in r.json()["skills"] if s["skill"] == "kafka")["validated"]
     pid = _new_project(client, recruiter, "Streaming pilot", "Team needed:\n- Kafka (senior, half time) for the event bus")
     gaps = _confirm(client, recruiter, pid)
@@ -150,19 +146,18 @@ def test_ai_draft_breaking_the_rules_is_replaced_by_the_template(client, recruit
 
 
 # 7 ---------------------------------------------------------------- access control on skills and projects
-def test_skill_privacy_and_tenant_isolation(client, recruiter, manager, employee, viewer):
+def test_skill_privacy_and_tenant_isolation(client, recruiter, manager, reader):
     pay = _project(client, recruiter, "Payments API migration")
     gaps = client.get(f"/projects/{pay['id']}/gaps", headers=recruiter).json()
     assert all("employee_id" not in o for g in gaps for o in g["internal_options"])  # recruiters: no names
     assert any("employee_id" in o for g in client.get(f"/projects/{pay['id']}/gaps", headers=manager).json()
                for o in g["internal_options"])
-    assert "people" not in client.get("/skills/matrix", headers=viewer).json()["skills"][0]
+    assert "people" not in client.get("/skills/matrix", headers=recruiter).json()["skills"][0]
     assert "people" in client.get("/skills/matrix", headers=manager).json()["skills"][0]
     assert client.get("/employees/emp_002/skills", headers=recruiter).status_code == 403
-    assert client.get("/employees/emp_002/skills", headers=employee).status_code == 403
-    assert client.get("/employees/me/skills", headers=employee).status_code == 200
-    assert client.get("/projects", headers=employee).status_code == 403
-    assert client.post("/projects", json={"name": "Nope"}, headers=viewer).status_code == 403
+    assert client.get("/employees/emp_002/skills", headers=manager).status_code == 200
+    assert client.get("/employees/emp_002/skills", headers=reader).status_code == 403  # machine keys: no personal data
+    assert client.post("/projects", json={"name": "Nope"}, headers=reader).status_code == 403
 
     with Session(engine) as s:
         t = Tenant(name=f"initech-{uuid.uuid4().hex[:6]}")
@@ -217,3 +212,29 @@ def test_gap_covered_internally_needs_a_plan_and_blocks_hiring(client, recruiter
     assert again[0]["decision"] == "internal" and again[0]["internal_plan"]  # survives a recompute
     undone = client.put(url, json={"decision": "open"}, headers=recruiter).json()
     assert undone["decision"] == "open" and undone["internal_plan"] == ""
+
+
+# -------------------------------------------------------------------- no documents: the project itself is analysed
+def test_project_without_documents_gets_requirements_from_its_description(client, recruiter):
+    p = client.post("/projects", json={"name": "Internal analytics dashboard", "team_id": "engineering",
+                                       "summary": "We need a senior Python developer full time and React half time."},
+                    headers=recruiter).json()
+    assert not p["documents"] and not p["requirements_confirmed"]
+    req = {r["skill"]: r for r in p["requirements"]}
+    assert set(req) == {"python", "react"} and {r["source"] for r in req.values()} == {"project"}
+    assert (req["python"]["level"], req["python"]["allocation_pct"]) == (3, 100)  # each clause read on its own
+    assert (req["react"]["level"], req["react"]["allocation_pct"]) == (2, 50)
+
+    # editing the summary re-analyses it into a new draft
+    r = client.patch(f"/projects/{p['id']}", json={"summary": "Two Kubernetes engineers, full time."}, headers=recruiter)
+    assert r.status_code == 200, r.text
+    det = r.json()
+    assert det["requirements_version"] == p["requirements_version"] + 1
+    assert {x["skill"]: x["headcount"] for x in det["requirements"]} == {"kubernetes": 2}
+    assert set(_confirm(client, recruiter, p["id"])) <= {"kubernetes"}
+
+    # documents take precedence over the description for the skills they mention
+    charter = "Team needed:\n- Kubernetes (expert, 1 engineer, half time)\n"
+    client.post(f"/projects/{p['id']}/documents", files=[("files", ("charter.md", charter.encode()))], headers=recruiter)
+    k8s = client.get(f"/projects/{p['id']}", headers=recruiter).json()["requirements"]
+    assert [(x["skill"], x["level"], x["source"]) for x in k8s] == [("kubernetes", 4, "llm")]

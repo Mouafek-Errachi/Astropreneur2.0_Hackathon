@@ -3,26 +3,26 @@ import requests
 import streamlit as st
 
 from api import API_URL, call
+from roles import public_roles, role_table
 
-DEMO_USERS = {
-    "recruiter@acme.test": ("Recruiter", "Screens, drafts and approves."),
-    "admin@acme.test": ("Admin", "Everything, plus the audit log, API keys and demo data."),
-    "manager@acme.test": ("Manager", "Like a recruiter, and sees and validates employee skills."),
-    "viewer@acme.test": ("Viewer", "Read only."),
-    "yasmine.b@hr-demo.test": ("Employee", "Asks HR and opens tickets."),
+DEMO_USERS = {  # HR staff only; what each role can do comes from the API (/auth/roles)
+    "recruiter@acme.test": "Recruiter",
+    "manager@acme.test": "Manager",
+    "admin@acme.test": "Admin",
 }
 
 _, middle, _ = st.columns([1, 1.7, 1])
 with middle:
-    st.title(":material/shield_person: Secure AI HR")
+    st.title("HRplus")
     st.caption("AI agents do the daily HR work. People make every decision.")
     if notice := st.session_state.pop("login_notice", None):
         st.warning(notice, icon=":material/schedule:")
 
     with st.container(border=True):
         st.subheader("Sign in")
-        email = st.selectbox("Account", list(DEMO_USERS), format_func=lambda e: f"{DEMO_USERS[e][0]} · {e}")
-        st.caption(DEMO_USERS[email][1])
+        email = st.selectbox("Account", list(DEMO_USERS), format_func=lambda e: f"{DEMO_USERS[e]} · {e}")
+        role_info = public_roles()
+        st.caption(role_info["summaries"].get(DEMO_USERS[email].lower(), ""))
         with st.form("login", border=False):
             password = st.text_input("Password", type="password", placeholder="Demo passwords are in .env.example")
             if st.form_submit_button("Log in", type="primary", width="stretch"):
@@ -42,6 +42,10 @@ with middle:
                         st.error("Too many attempts. Wait a minute and try again.", icon=":material/timer:")
                     else:
                         st.error(f"Login failed ({r.status_code}).")
+
+    if role_info["access"]:
+        with st.expander("What each role can do", icon=":material/badge:"):
+            role_table(role_info["access"])
 
     how = st.columns(3)
     how[0].markdown(":material/smart_toy: **Agents propose**  \n:gray[Screen CVs, triage email, draft replies.]")

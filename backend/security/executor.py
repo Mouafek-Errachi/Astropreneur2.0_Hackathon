@@ -20,6 +20,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from backend.config import get_settings
+from backend.data import pipeline
 from backend.data.models import (Application, Approval, Candidate, JobOffer, PointsLedger, PointsRule, ProposedAction,
                                  SchedulingToken, SentEmail, utcnow)
 from backend.agents.drafter import INVITE_WHEN
@@ -92,9 +93,11 @@ def approve(session: Session, action: ProposedAction, reviewer: Principal, *, no
         raise HTTPException(409, f"ALREADY_DECIDED: action is {action.status}")
     if action.risk_level == "high" and not acknowledge_risk:
         raise HTTPException(400, "HIGH_RISK: review the flags and set acknowledge_risk=true")
-    if action.requested_by == reviewer.subject and (
-            action.type in FOUR_EYES_ALWAYS or (action.type in FOUR_EYES_DECISIONS and get_settings().four_eyes_decisions)):
-        raise HTTPException(403, "FOUR_EYES: the person who requested this action cannot approve it")
+    if action.type in FOUR_EYES_ALWAYS or (action.type in FOUR_EYES_DECISIONS and get_settings().four_eyes_decisions):
+        if action.requested_by == reviewer.subject:
+            raise HTTPException(403, "FOUR_EYES: the person who requested this action cannot approve it")
+        if "approvals:sign_off" not in reviewer.scopes:
+            raise HTTPException(403, "SIGN_OFF: a manager or admin must approve this action")
     if edits:
         payload = json.loads(action.payload)
         for k in ("subject", "body"):  # the recipient can never be edited
@@ -177,8 +180,8 @@ def _execute(session: Session, action: ProposedAction, approval: Approval) -> No
             cand = session.get(Candidate, app.candidate_id) if app else None
             if not app or app.tenant_id != action.tenant_id:
                 raise ValueError("application not found")
-            app.status, cand.stage = p["decision"], p["decision"]
-            session.add(app)
+            pipeline.set_status(session, app, p["decision"], approval.reviewer_email)
+            cand.stage = p["decision"]
             session.add(cand)
             action.result = f"application {app.id} -> {p['decision']}"
         elif action.type == "schedule_interview":

@@ -1,5 +1,5 @@
 """Project staffing & skill gap routes. Individual skill levels are personal data: only `skills:read` (managers,
-admins) and the employee themself see them; everyone else gets team totals."""
+admins) sees them and only `skills:manage` changes them; recruiters get team totals."""
 import json
 import uuid
 
@@ -10,7 +10,7 @@ from backend.config import get_settings
 from backend.data.db import get_session
 from backend.data.models import (Employee, EmployeeSkill, Project, ProjectAssignment, ProjectDocument, SkillGap)
 from backend.orchestration import staffing
-from backend.schemas import EmployeeSkillsIn, GapDecision, ProjectCreate, RequirementsIn
+from backend.schemas import EmployeeSkillsIn, GapDecision, ProjectCreate, ProjectUpdate, RequirementsIn
 from backend.security.gateway import Principal, get_owned, require
 
 router = APIRouter(tags=["project staffing"])
@@ -62,6 +62,23 @@ def create_project(body: ProjectCreate, p: Principal = Depends(require("projects
                    session: Session = Depends(get_session)):
     pr = staffing.create_project(session, p.tenant_id, name=body.name, summary=body.summary, team_id=body.team_id,
                                  deadline=body.deadline, actor=p.subject)
+    if body.summary.strip():  # no documents needed: the description alone gives a first draft
+        staffing.analyze(session, pr, p.subject)
+    return _project_out(session, pr, p, detail=True)
+
+
+@router.patch("/projects/{project_id}")
+def update_project(project_id: str, body: ProjectUpdate, p: Principal = Depends(require("projects:write")),
+                   session: Session = Depends(get_session)):
+    """Editing the name or summary re-runs the analysis (a new draft version), like uploading a document."""
+    pr = get_owned(session, Project, _uuid(project_id), p)
+    changes = body.model_dump(exclude_none=True)
+    for k, v in changes.items():
+        setattr(pr, k, v)
+    session.add(pr)
+    session.commit()
+    if {"name", "summary"} & set(changes):
+        staffing.analyze(session, pr, p.subject)
     return _project_out(session, pr, p, detail=True)
 
 
@@ -156,25 +173,19 @@ def _skills_out(session: Session, employee_id: str) -> list[dict]:
 
 
 @router.get("/employees/{employee_id}/skills")
-def employee_skills(employee_id: str, p: Principal = Depends(require()), session: Session = Depends(get_session)):
-    if employee_id == "me":
-        employee_id = p.employee_id or ""
+def employee_skills(employee_id: str, p: Principal = Depends(require("skills:read")), session: Session = Depends(get_session)):
     emp = _employee(session, employee_id, p)
-    if p.employee_id != emp.id and "skills:read" not in p.scopes:
-        raise HTTPException(403, "Only the employee and their managers can see individual skill levels")
     return {"employee_id": emp.id, "name": f"{emp.first_name} {emp.last_initial}.", "skills": _skills_out(session, emp.id)}
 
 
 @router.put("/employees/{employee_id}/skills")
-def set_employee_skills(employee_id: str, body: EmployeeSkillsIn, p: Principal = Depends(require(human_only=True)),
+def set_employee_skills(employee_id: str, body: EmployeeSkillsIn,
+                        p: Principal = Depends(require("skills:manage", human_only=True)),
                         session: Session = Depends(get_session)):
-    """Employees declare their own skills (unvalidated until a manager confirms); managers add and validate."""
-    if employee_id == "me":
-        employee_id = p.employee_id or ""
+    """Managers add, change and validate skills. A skill entered unvalidated (e.g. claimed, not yet checked) never
+    covers a gap. Nobody validates their own record."""
     emp = _employee(session, employee_id, p)
-    as_manager = "skills:manage" in p.scopes
-    if p.employee_id != emp.id and not as_manager:
-        raise HTTPException(403, "Only the employee and their managers can change these skills")
-    staffing.set_employee_skills(session, p.tenant_id, emp.id, [s.model_dump() for s in body.skills], p.subject,
-                                 as_manager=as_manager)
+    if p.employee_id == emp.id:
+        raise HTTPException(403, "You cannot change your own skill record")
+    staffing.set_employee_skills(session, p.tenant_id, emp.id, [s.model_dump() for s in body.skills], p.subject)
     return {"employee_id": emp.id, "skills": _skills_out(session, emp.id)}

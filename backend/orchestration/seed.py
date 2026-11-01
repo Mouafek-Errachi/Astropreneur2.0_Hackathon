@@ -12,7 +12,7 @@ from backend.config import get_settings
 from backend.data import vectors
 from backend.data.models import (Employee, JobOffer, PointsLedger, PointsRule, PolicyChunk, Team, Tenant, User)
 from backend.orchestration import ingestion
-from backend.security.gateway import hash_password
+from backend.security.gateway import ROLE_SCOPES, hash_password
 
 
 def _csv(name: str) -> list[dict]:
@@ -39,6 +39,7 @@ def _bool(v: str) -> bool:
 def seed(session: Session) -> None:
     s = get_settings()
     if session.exec(select(Tenant)).first():
+        _deactivate_retired_roles(session)
         return
     tenant = Tenant(name="acme")
     session.add(tenant)
@@ -48,9 +49,7 @@ def seed(session: Session) -> None:
         ("admin@acme.test", "admin", s.demo_admin_password, None),
         ("recruiter@acme.test", "recruiter", s.demo_recruiter_password, None),
         ("manager@acme.test", "manager", s.demo_manager_password, None),
-        ("viewer@acme.test", "viewer", s.demo_viewer_password, None),
-        ("yasmine.b@hr-demo.test", "employee", s.demo_employee_password, "emp_001"),
-    ]:
+    ]:  # HR staff only: employees are records, not users
         session.add(User(tenant_id=tid, email=email, role=role, hashed_password=hash_password(pw), employee_id=emp))
 
     for t in _csv("hr_teams"):
@@ -58,7 +57,7 @@ def seed(session: Session) -> None:
                          mailing_list=t["mailing_list"], tone_guide=t["tone_guide"]))
     session.commit()
     titles = _job_titles()
-    for e in _csv("hr_employees"):  # portal_token is not imported: employees log in with a password here
+    for e in _csv("hr_employees"):  # portal_token is not imported: employees do not log in here
         session.add(Employee(id=e["employee_id"], tenant_id=tid, first_name=e["first_name"], last_initial=e["last_initial"],
                              team_id=e["team_id"], email=e["email"], job_title=titles.get(e["employee_id"], ""),
                              leave_balance_days=float(e["leave_balance_days"]), contract_type=e["contract_type"],
@@ -77,6 +76,14 @@ def seed(session: Session) -> None:
 
     staffing.seed_taxonomy(session)
     staffing.seed_employee_skills(session, tid)
+
+
+def _deactivate_retired_roles(session: Session) -> None:
+    """Older databases still hold 'viewer' and 'employee' logins: only the three HR roles may sign in now."""
+    for u in session.exec(select(User).where(User.role.not_in(list(ROLE_SCOPES)), User.active == True)):  # noqa: E712
+        u.active = False
+        session.add(u)
+    session.commit()
 
 
 def index_policies(session: Session, tenant_id: int) -> int:
@@ -147,4 +154,7 @@ def load_demo(session: Session, tenant_id: int, actor: str, bulk: bool = False) 
     from backend.orchestration import staffing
 
     out["projects"] = staffing.load_demo_projects(session, tenant_id, actor)
+    from backend.orchestration import analytics
+
+    out["analytics_history_rows"] = analytics.demo_history(session, tenant_id)  # 30 days for the trend charts
     return out

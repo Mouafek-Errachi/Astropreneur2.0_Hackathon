@@ -18,7 +18,7 @@ tab1, tab_group, tab2, tab3, tab4 = st.tabs(["Tickets", "Email a group", "Team b
 with tab1:
     tickets = call("GET", "/hr/tickets") or []
     if not tickets:
-        empty("No ticket yet.", "Employees open tickets from the Ask HR page.")
+        empty("No ticket yet.", "File an employee's request from the Ask HR page.")
     else:
         st.caption("Each ticket's drafted reply waits in Approvals.")
         st.dataframe([{"Employee": t["employee_id"], "Request": t["request_text"], "Category": t["category"],

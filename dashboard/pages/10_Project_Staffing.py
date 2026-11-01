@@ -9,41 +9,37 @@ from ui import esc, page_header
 require_login()
 me = st.session_state.get("me") or call("GET", "/auth/me")
 scopes = set(me["scopes"])
-if "projects:read" in scopes:
-    page_header("Project staffing", "What each project needs, what the team covers, and a job description for each true "
-                                    "gap. The AI extracts and drafts; people confirm, decide and approve.")
-else:
-    page_header("My skills", "Declare your skills and level. They count for project staffing once a manager validates them.")
+page_header("Project staffing", "What each project needs, what the team covers, and a job description for each true "
+                                "gap. The AI extracts and drafts; people confirm, decide and approve.")
 
 LEVELS = {1: "1 beginner", 2: "2 working", 3: "3 senior", 4: "4 expert"}
 KIND = {"missing": "🔴 missing", "insufficient_level": "🟠 level too low", "insufficient_capacity": "🟡 not enough capacity"}
 
 
-def my_skills() -> None:
-    data = call("GET", "/employees/me/skills")
+def edit_employee_skills() -> None:
+    """Managers only: an employee's skills, and a form to add, change or validate one."""
+    st.subheader("Employee skills")
+    st.caption("Managers keep this up to date. A skill left unvalidated (claimed but not checked) never covers a gap.")
+    people = call("GET", "/hr/employees") or []
+    emp = st.selectbox("Employee", [e["id"] for e in people],
+                       format_func=lambda i: next(f"{e['name']} · {e['team']} · {i}" for e in people if e["id"] == i))
+    data = emp and call("GET", f"/employees/{emp}/skills")
     if not data:
         return
-    st.subheader(f"My skills ({esc(data['name'])})")
-    st.caption("Skills you declare count for project staffing only after a manager validates them.")
     if data["skills"]:
         st.dataframe([{"skill": s["skill"], "level": LEVELS[s["level"]],
-                       "status": "✅ validated" if s["validated"] else "⏳ waiting for a manager"} for s in data["skills"]],
+                       "status": "✅ validated" if s["validated"] else "⏳ not validated"} for s in data["skills"]],
                      hide_index=True, width="stretch")
-    with st.form("my_skill"):
-        c1, c2 = st.columns([3, 2])
+    with st.form(f"skill_{emp}"):
+        c1, c2, c3 = st.columns([3, 2, 2])
         skill = c1.text_input("Skill", placeholder="e.g. Kubernetes")
         level = c2.selectbox("Level", list(LEVELS), format_func=LEVELS.get, index=1)
+        validated = c3.checkbox("Validated", value=True)
         if st.form_submit_button("Add or update") and skill.strip():
-            if call("PUT", "/employees/me/skills", json={"skills": [{"skill": skill.strip(), "level": level}]}):
+            body = {"skills": [{"skill": skill.strip(), "level": level, "validated": validated}]}
+            if call("PUT", f"/employees/{emp}/skills", json=body):
                 st.rerun()
 
-
-if "projects:read" not in scopes:  # employees: only their own skill profile
-    if me.get("employee_id"):
-        my_skills()
-    else:
-        st.info("Your role does not have access to this page.")
-    st.stop()
 
 can_write = "projects:write" in scopes
 projects = call("GET", "/projects") or []
@@ -54,7 +50,8 @@ with st.expander("New project", expanded=not projects, icon=":material/add:"):
     else:
         with st.form("new_project"):
             name = st.text_input("Project name")
-            summary = st.text_area("Summary")
+            summary = st.text_area("Summary", help="Describe the skills the project needs (e.g. 'a senior Python developer "
+                                                "full time, React half time'). The AI reads it even without documents.")
             c1, c2 = st.columns(2)
             team = c1.selectbox("Team", [None] + [t["id"] for t in call("GET", "/hr/teams") or []])
             deadline = c2.text_input("Deadline (YYYY-MM-DD)")
@@ -64,13 +61,38 @@ with st.expander("New project", expanded=not projects, icon=":material/add:"):
                     st.session_state.project_id = r["id"]
                     st.rerun()
 
-if not projects:
-    st.info("No project yet. Create one above, or log in as admin and click 'Load demo data' on the home page.")
-    st.stop()
-
 tab_projects, tab_matrix = st.tabs(["Projects", "Team skill matrix"])
 
+# The matrix (and the managers' skills editor) is drawn first: it must work before any project exists, and the
+# projects tab stops early when there is none.
+with tab_matrix:
+    team = st.selectbox("Team", [None] + [t["id"] for t in call("GET", "/hr/teams") or []],
+                        format_func=lambda t: t or "all teams")
+    m = call("GET", "/skills/matrix", params={"team": team} if team else {})
+    if m and m["skills"]:
+        df = pd.DataFrame([{k: r[k] for k in ("skill", "level_1", "level_2", "level_3", "level_4", "unvalidated")}
+                           for r in m["skills"]]).set_index("skill")
+        st.caption("Validated people per skill and level. Unvalidated skills are counted apart and do not cover gaps.")
+        top = int(df[["level_1", "level_2", "level_3", "level_4"]].to_numpy().max() or 1)
+        bar = lambda label: st.column_config.ProgressColumn(label, min_value=0, max_value=top, format="%d")  # noqa: E731
+        st.dataframe(df, width="stretch", column_config={
+            "level_1": bar("beginner"), "level_2": bar("working"), "level_3": bar("senior"), "level_4": bar("expert"),
+            "unvalidated": st.column_config.NumberColumn("not validated", format="%d")})
+        if m["individual"]:
+            with st.expander("Who has what (managers only)"):
+                st.dataframe([{"skill": r["skill"], **x} for r in m["skills"] for x in r["people"]], hide_index=True,
+                             width="stretch")
+        else:
+            st.caption("Individual levels are visible to managers only.")
+    else:
+        st.info("No skills recorded yet.")
+    if "skills:manage" in scopes:
+        edit_employee_skills()
+
 with tab_projects:
+    if not projects:
+        st.info("No project yet. Create one above, or log in as admin and click 'Load demo data' on the home page.")
+        st.stop()
     by_id = {p["id"]: p for p in projects}
     ids = list(by_id)
     cur = st.session_state.get("project_id")
@@ -82,6 +104,21 @@ with tab_projects:
     p = call("GET", f"/projects/{pid}")
     st.caption(f"{esc(p['summary'])}  ·  team: {p['team_id'] or '—'}  ·  deadline: {p['deadline'] or '—'}  ·  "
                f"already assigned: {p['assigned_fte']:g} FTE")
+
+    # ---------------------------------------------------------------- description (analysed like a document)
+    if can_write:
+        with st.expander("Project description", expanded=not p["documents"] and not p["requirements"]):
+            with st.form(f"desc{pid}"):
+                new_summary = st.text_area("Summary", value=p["summary"], height=150,
+                                           help="The AI extracts the required skills from this text and from the "
+                                                "documents. Skills found in documents take precedence.")
+                c1, c2 = st.columns(2)
+                save = c1.form_submit_button("💾 Save and analyse")
+                again = c2.form_submit_button("🔄 Analyse again")
+            if save and call("PATCH", f"/projects/{pid}", json={"summary": new_summary}):
+                st.rerun()
+            if again and call("POST", f"/projects/{pid}/analyze"):
+                st.rerun()
 
     # ---------------------------------------------------------------- documents
     with st.expander(f"Documents ({len(p['documents'])})", expanded=not p["documents"]):
@@ -111,8 +148,10 @@ with tab_projects:
         st.caption(f"Version {p['requirements_version']}, confirmed by {p['confirmed_by']}. Edit and confirm again to "
                    "recompute the gaps.")
     elif p["requirements"]:
-        st.warning(f"Draft version {p['requirements_version']} extracted by the AI from the documents. Check it: it is "
-                   "not used until a person confirms it.")
+        st.warning(f"Draft version {p['requirements_version']} extracted by the AI from the project description and "
+                   "documents. Check it: it is not used until a person confirms it.")
+    else:
+        st.info("No skills found yet. Describe them in the project description, upload a charter, or add rows below.")
     req_df = pd.DataFrame(p["requirements"] or [], columns=["skill", "level", "headcount", "allocation_pct", "evidence", "source"])
     edited = st.data_editor(
         req_df, key=f"req{pid}_{p['requirements_version']}", num_rows="dynamic" if can_write else "fixed",
@@ -202,27 +241,3 @@ with tab_projects:
                     st.text(jd["payload"]["body"])
                     if jd["flags"]:
                         st.warning("Checks: " + "; ".join(f"{f['type']} ({f['severity']})" for f in jd["flags"]))
-
-with tab_matrix:
-    team = st.selectbox("Team", [None] + [t["id"] for t in call("GET", "/hr/teams") or []],
-                        format_func=lambda t: t or "all teams")
-    m = call("GET", "/skills/matrix", params={"team": team} if team else {})
-    if m and m["skills"]:
-        df = pd.DataFrame([{k: r[k] for k in ("skill", "level_1", "level_2", "level_3", "level_4", "unvalidated")}
-                           for r in m["skills"]]).set_index("skill")
-        st.caption("Validated people per skill and level. Self-declared skills are counted apart and do not cover gaps.")
-        top = int(df[["level_1", "level_2", "level_3", "level_4"]].to_numpy().max() or 1)
-        bar = lambda label: st.column_config.ProgressColumn(label, min_value=0, max_value=top, format="%d")  # noqa: E731
-        st.dataframe(df, width="stretch", column_config={
-            "level_1": bar("beginner"), "level_2": bar("working"), "level_3": bar("senior"), "level_4": bar("expert"),
-            "unvalidated": st.column_config.NumberColumn("self-declared", format="%d")})
-        if m["individual"]:
-            with st.expander("Who has what (managers only)"):
-                st.dataframe([{"skill": r["skill"], **x} for r in m["skills"] for x in r["people"]], hide_index=True,
-                             width="stretch")
-        else:
-            st.caption("Individual levels are visible to managers only.")
-    else:
-        st.info("No skills recorded yet.")
-    if me.get("employee_id"):
-        my_skills()

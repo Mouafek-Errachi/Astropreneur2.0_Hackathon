@@ -44,13 +44,17 @@ def recruiter(client):
 
 
 @pytest.fixture(scope="session")
-def viewer(client):
-    return login(client, "viewer@acme.test", "Viewer#2026!")
+def manager(client):
+    return login(client, "manager@acme.test", "Manager#2026!")
 
 
 @pytest.fixture(scope="session")
-def employee(client):
-    return login(client, "yasmine.b@hr-demo.test", "Employee#2026!")
+def reader(client, admin):
+    """A read-only machine key (e.g. a reporting integration): it can read but never change or approve anything."""
+    scopes = ["jobs:read", "emails:read", "approvals:read", "projects:read"]
+    r = client.post("/auth/api-keys", json={"name": "read-only", "scopes": scopes}, headers=admin)
+    assert r.status_code == 200, r.text
+    return {"X-API-Key": r.json()["key"]}
 
 
 @pytest.fixture(scope="session")

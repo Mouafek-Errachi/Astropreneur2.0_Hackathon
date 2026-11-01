@@ -1,5 +1,6 @@
-"""The HR assistant: a chat that answers from the company's documents, with sources, and keeps the conversation so
-follow-up questions work. Admins add and remove the documents it reads."""
+"""The HR assistant for HR staff: a chat that answers from the company's documents, with sources, and keeps the
+conversation so follow-up questions work. Admins add and remove the documents it reads. Employees do not log in:
+HR files their requests on their behalf."""
 import streamlit as st
 
 from api import call, can, require_login
@@ -7,10 +8,10 @@ from ui import esc, flash, page_header
 
 require_login()
 page_header("Ask HR", "Your HR assistant. It answers only from the company's documents and says which ones it used; "
-                      "follow-up questions keep the context. Anything the documents do not cover goes to the HR team.")
+                      "follow-up questions keep the context. Requests from employees are filed here on their behalf.")
 
-EXAMPLES = ["How do I claim my expenses?", "How long is the probation period?", "How is overtime paid?",
-            "What is my training budget?"]
+EXAMPLES = ["How are expenses claimed?", "How long is the probation period?", "How is overtime paid?",
+            "What is the yearly training budget?"]
 DOC_TYPES = ["pdf", "docx", "odt", "rtf", "txt", "md", "html"]
 
 
@@ -38,10 +39,10 @@ def show_answer(msg: dict) -> None:
         st.warning("This question contains text that looks like an instruction to the AI. It was treated as a "
                    "question only.", icon=":material/gpp_maybe:")
     if msg["escalate_to_hr"]:
-        st.info("Not covered by the company documents: the HR team has been told.", icon=":material/support_agent:")
+        st.info("Not covered by the company documents: check with the policy owner.", icon=":material/support_agent:")
 
 
-tabs = ["Chat", "Company documents"] + (["Send a request to HR"] if can("tickets:create") else [])
+tabs = ["Chat", "Company documents"] + (["File a request for an employee"] if can("hr:write") else [])
 views = dict(zip(tabs, st.tabs(tabs)))
 
 with views["Chat"]:
@@ -108,13 +109,17 @@ with views["Company documents"]:
                 if r := call("POST", "/qa/reindex"):
                     st.success(f"{r['chunks']} sections indexed")
 
-if "Send a request to HR" in views:
-    with views["Send a request to HR"], st.form("ticket", clear_on_submit=True):
-        st.caption("HR receives your request with a drafted answer. A person reviews it before anything is sent to you.")
-        text = st.text_area("Your request", placeholder="e.g. I need a certificate of employment for my visa appointment.")
-        if st.form_submit_button("Send request", type="primary", icon=":material/send:"):
+if "File a request for an employee" in views:
+    with views["File a request for an employee"], st.form("ticket", clear_on_submit=True):
+        st.caption("For a request an employee sent by email, phone or in person. The AI sorts it and drafts a reply to "
+                   "the employee; the reply waits in Approvals until someone approves it.")
+        people = call("GET", "/hr/employees") or []
+        names = {e["id"]: f"{e['name']} · {e['team']} · {e['id']}" for e in people if e["active"]}
+        emp = st.selectbox("Employee", list(names), format_func=names.get)
+        text = st.text_area("Their request", placeholder="e.g. I need a certificate of employment for my visa appointment.")
+        if st.form_submit_button("File request", type="primary", icon=":material/send:"):
             if not text.strip():
-                st.warning("Write your request first.")
-            elif r := call("POST", "/hr/tickets", json={"request_text": text}):
+                st.warning("Write the request first.")
+            elif r := call("POST", "/hr/tickets", json={"employee_id": emp, "request_text": text}):
                 st.success(f"{r['message']} (category: {r['category']}, priority: {r['priority']})",
                            icon=":material/check_circle:")

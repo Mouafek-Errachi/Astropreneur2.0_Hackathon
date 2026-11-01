@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from backend.config import get_settings
+from backend.data import pipeline
 from backend.data.models import (Application, CalendarEvent, Candidate, JobOffer, ProposedAction, SchedulingToken,
                                  utcnow)
 from backend.orchestration import workflow
@@ -104,8 +105,7 @@ def book(session: Session, tenant_id: int, candidate_id, interviewer: str, slot:
     session.add(cand)
     for app in session.exec(select(Application).where(Application.candidate_id == cand.id,
                                                       Application.status.in_(["new", "screened", "shortlisted"]))):
-        app.status = "interview"
-        session.add(app)
+        pipeline.set_status(session, app, "interview", "scheduling")
     return f"{start:%A %d %B %Y, %H:%M}-{end:%H:%M}"
 
 

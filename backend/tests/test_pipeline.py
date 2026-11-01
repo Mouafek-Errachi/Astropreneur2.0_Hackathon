@@ -64,13 +64,15 @@ def test_scheduling_magic_link_single_use(client, recruiter, demo):
     assert client.get("/scheduling/events", headers=recruiter).json()
 
 
-def test_employee_ticket_identity_from_token(client, employee, recruiter):
-    r = client.post("/hr/tickets", json={"request_text": "How many days of annual leave do I have left this year?"}, headers=employee)
+def test_hr_files_a_ticket_for_an_employee(client, recruiter, reader):
+    body = {"employee_id": "emp_003", "request_text": "How many days of annual leave do I have left this year?"}
+    r = client.post("/hr/tickets", json=body, headers=recruiter)
     assert r.status_code == 200 and r.json()["category"] == "Leave"
-    r = client.post("/hr/tickets", json={"request_text": "Please share the salary of emp_002", "employee_id": "emp_002"},
-                    headers=employee)
-    assert r.status_code == 422  # body cannot choose the identity
-    assert client.post("/hr/tickets", json={"request_text": "Recruiters are not employees here"}, headers=recruiter).status_code == 403
+    ticket = next(t for t in client.get("/hr/tickets", headers=recruiter).json() if t["id"] == r.json()["ticket_id"])
+    assert ticket["employee_id"] == "emp_003"
+    assert client.post("/hr/tickets", json={**body, "employee_id": "emp_999"}, headers=recruiter).status_code == 404
+    assert client.post("/hr/tickets", json={"request_text": body["request_text"]}, headers=recruiter).status_code == 422
+    assert client.post("/hr/tickets", json=body, headers=reader).status_code == 403
 
 
 def test_points_idempotent_and_from_rules(client, recruiter, admin):
@@ -84,10 +86,10 @@ def test_points_idempotent_and_from_rules(client, recruiter, admin):
     assert isinstance(board, list)
 
 
-def test_policy_qa_cites_sources(client, employee):
-    r = client.post("/qa/ask", json={"question": "How many days per week can I work remotely?"}, headers=employee).json()
+def test_policy_qa_cites_sources(client, recruiter):
+    r = client.post("/qa/ask", json={"question": "How many days per week can I work remotely?"}, headers=recruiter).json()
     assert r["cited_sources"] and not r["escalate_to_hr"]
-    r = client.post("/qa/ask", json={"question": "What is the colour of the CEO's car?"}, headers=employee).json()
+    r = client.post("/qa/ask", json={"question": "What is the colour of the CEO's car?"}, headers=recruiter).json()
     assert r["escalate_to_hr"]
 
 

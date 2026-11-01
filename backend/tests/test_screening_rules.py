@@ -96,9 +96,9 @@ def test_criteria_change_reranks_without_llm(client, recruiter):
     assert client.put(f"/jobs/{job['id']}/criteria", json=bad, headers=recruiter).status_code == 422
 
 
-def test_viewer_cannot_change_criteria(client, viewer, recruiter):
-    job = _job(client, recruiter, "Viewer Job")
-    assert client.put(f"/jobs/{job['id']}/criteria", json={"required_skills": ["x"]}, headers=viewer).status_code == 403
+def test_read_only_key_cannot_change_criteria(client, reader, recruiter):
+    job = _job(client, recruiter, "Read-only Job")
+    assert client.put(f"/jobs/{job['id']}/criteria", json={"required_skills": ["x"]}, headers=reader).status_code == 403
 
 
 def test_duplicate_resume_rejected(client, recruiter):

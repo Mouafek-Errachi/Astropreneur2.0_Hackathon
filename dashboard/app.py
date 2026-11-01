@@ -3,14 +3,19 @@
 This file is the router: the log-in page until there is a token, then the pages the role may use, grouped in the menu.
 """
 import html
+from pathlib import Path
 
 import streamlit as st
 
 from api import call
 from nav import visible_pages
+from roles import public_roles, role_table
 from ui import chip, inject_css
 
-st.set_page_config(page_title="Secure AI HR", page_icon=":material/shield_person:", layout="wide")
+ASSETS = Path(__file__).parent / "assets"
+st.set_page_config(page_title="HRplus", page_icon=str(ASSETS / "hrplus-icon.svg"), layout="wide")
+# Top left of every page, above the menu; collapses to the icon when the sidebar is closed.
+st.logo(str(ASSETS / "hrplus.svg"), size="large", icon_image=str(ASSETS / "hrplus-icon.svg"))
 inject_css()
 
 if "token" not in st.session_state:
@@ -30,12 +35,16 @@ for e in visible_pages(me):
     menu.setdefault(e.section, []).append(st.Page(e.path, title=e.title, icon=f":material/{e.icon}:", url_path=e.url))
 page = st.navigation(menu)
 
-ROLE_LINE = {"admin": "Admin · everything", "manager": "Manager · validates skills", "recruiter": "Recruiter"}
+ROLE_LINE = {"admin": "Admin · IT and security", "manager": "Manager · signs off, owns skills",
+             "recruiter": "Recruiter · runs hiring"}
 with st.sidebar:
     # st.html, not st.markdown, which would turn the address into a link
     st.html(f'<div class="hr-me"><div class="avatar">{html.escape(me["email"][:1].upper())}</div>'
             f'<div class="who"><b>{html.escape(me["email"])}</b>'
             f'<span>{html.escape(ROLE_LINE.get(me["role"], me["role"].capitalize()))}</span></div></div>')
+    with st.popover("What my role can do", icon=":material/badge:", width="stretch"):
+        st.caption(me.get("role_summary", ""))
+        role_table(public_roles()["access"], highlight=me["role"])
     health = st.session_state.health
     if health.get("llm_provider") == "mock":
         st.markdown(chip("AI off", "gray", "smart_toy"), help="Mock mode: rule-based outputs. Set LLM_PROVIDER=gemini "

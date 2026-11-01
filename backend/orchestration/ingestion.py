@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from sqlmodel import Session, select
 
 from backend.agents import llm
-from backend.data import storage, vectors
+from backend.data import pipeline, storage, vectors
 from backend.data.models import Application, Candidate, EmailMessage, IntakeLog, JobOffer, Resume, utcnow
 from backend.orchestration import followups
 from backend.security import audit, events
@@ -53,7 +53,7 @@ def ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: str
                   source: str = "upload", source_ref: str = "", actor: str = "") -> dict:
     """Every source ends here (dashboard upload, /intake/resumes, demo data): same file guard, Injection Guard and
     duplicate checks. Each resume received, accepted or refused, is written to the intake log."""
-    result = _ingest_resume(session, tenant_id, job, filename, data, source, source_ref)
+    result = _ingest_resume(session, tenant_id, job, filename, data, source, source_ref, actor)
     session.add(IntakeLog(tenant_id=tenant_id, job_id=job.id, source=source, source_ref=source_ref,
                           filename=result["filename"], actor=actor, accepted=result["accepted"],
                           candidate_id=uuid.UUID(result["candidate_id"]) if result.get("candidate_id") else None,
@@ -64,7 +64,7 @@ def ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: str
 
 
 def _ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: str, data: bytes, source: str,
-                   source_ref: str) -> dict:
+                   source_ref: str, actor: str) -> dict:
     name = safe_display_filename(filename)
     same_job = (select(Resume.id).join(Application, Application.resume_id == Resume.id)
                 .where(Resume.tenant_id == tenant_id, Application.job_id == job.id))
@@ -99,8 +99,9 @@ def _ingest_resume(session: Session, tenant_id: int, job: JobOffer, filename: st
                      hidden_text=doc.hidden_text, sanitizer_notes=doc.notes, already_clean=True)
     resume.flags, resume.risk_level, resume.injection_score = g.flags_json, g.risk_level, g.score
     session.add(resume)
-    session.add(Application(tenant_id=tenant_id, candidate_id=cand.id, job_id=job.id, resume_id=resume.id,
-                            status="needs_review" if g.risk_level in ("medium", "high") else "new"))
+    pipeline.created(session, Application(tenant_id=tenant_id, candidate_id=cand.id, job_id=job.id, resume_id=resume.id,
+                                          status="needs_review" if g.risk_level in ("medium", "high") else "new"),
+                     actor)
     session.commit()
     return {"filename": name, "accepted": True, "candidate_id": str(cand.id), "risk_level": g.risk_level,
             "flags": [f.type for f in g.flags], "hidden_text_found": bool(doc.hidden_text.strip())}

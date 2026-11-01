@@ -140,6 +140,7 @@ class AskRequest(Strict):
 
 
 class TicketCreate(Strict):
+    employee_id: str = Field(pattern=r"^emp_\d{3,6}$")  # HR files the request on this employee's behalf
     request_text: str = Field(min_length=10, max_length=3000)
 
 
@@ -170,9 +171,15 @@ class InterviewAssistRequest(Strict):
 # ---------------------------------------------------------------- project staffing
 class ProjectCreate(Strict):
     name: str = Field(min_length=2, max_length=150)
-    summary: str = Field(default="", max_length=2000)
+    summary: str = Field(default="", max_length=8000)  # also read by the analyzer: skills can be described here
     team_id: Optional[str] = Field(default=None, pattern=r"^[a-z_]{2,40}$")
     deadline: str = Field(default="", max_length=20)
+
+
+class ProjectUpdate(Strict):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    summary: Optional[str] = Field(default=None, max_length=8000)
+    deadline: Optional[str] = Field(default=None, max_length=20)
 
 
 class RequirementsIn(Strict):
@@ -187,7 +194,7 @@ class GapDecision(Strict):
 class EmployeeSkillIn(Strict):
     skill: str = Field(min_length=1, max_length=60)
     level: int = Field(ge=1, le=4)
-    validated: bool = True  # only honoured for managers
+    validated: bool = True  # False: claimed but not checked yet, does not cover gaps
 
 
 class EmployeeSkillsIn(Strict):

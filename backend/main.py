@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlmodel import Session
 
-from backend.api import approvals, auth, hr, inbox, intake, recruiting, scheduling, security, staffing
+from backend.api import analytics, approvals, auth, hr, inbox, intake, recruiting, scheduling, security, staffing
 from backend.config import get_settings
 from backend.data.db import engine, init_db
 from backend.orchestration import seed
@@ -42,7 +42,7 @@ app.add_middleware(SlowAPIMiddleware)  # applies DEFAULT_RATE_LIMIT to every rou
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
-    allow_methods=["GET", "POST", "PUT"],
+    allow_methods=["GET", "POST", "PUT", "PATCH"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
 )
 
@@ -69,9 +69,10 @@ def health():
     w = settings.writer_llm_provider
     return {"status": "ok", "llm_provider": p, "llm_fallback": settings.llm_fallback_provider or None,
             "llm_ready": p == "mock" or bool(getattr(settings, f"{p}_api_key", "")),
-            "llm_writer": w or None, "llm_writer_ready": not w or bool(getattr(settings, f"{w}_api_key", ""))}
+            "llm_writer": w or None, "llm_writer_ready": not w or bool(getattr(settings, f"{w}_api_key", "")),
+            "analytics_utilisation_alert": settings.analytics_utilisation_alert}
 
 
 for r in (auth.router, recruiting.router, inbox.router, approvals.router, scheduling.router, hr.router, security.router,
-          staffing.router, intake.router):
+          staffing.router, intake.router, analytics.router):
     app.include_router(r)
