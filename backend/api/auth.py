@@ -28,7 +28,8 @@ def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), session
 
 @router.get("/me")
 def me(p: Principal = Depends(get_principal)):
-    return {"email": p.subject, "role": p.role, "tenant_id": p.tenant_id, "kind": p.kind, "scopes": sorted(p.scopes)}
+    return {"email": p.subject, "role": p.role, "tenant_id": p.tenant_id, "kind": p.kind,
+            "employee_id": p.employee_id, "scopes": sorted(p.scopes)}
 
 
 @router.post("/api-keys")

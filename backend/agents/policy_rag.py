@@ -39,13 +39,15 @@ def search(session: Session, tenant_id: int, question: str, k: int = 4) -> list[
     return sorted((s for s in scored if s[0] > 0), key=lambda x: -x[0])[:k]
 
 
-def answer(question: str, hits: list[tuple[float, PolicyChunk]],
+def answer(question: str, hits: list[tuple[float, PolicyChunk]], employee_context: str = "",
            history: list[tuple[str, str]] | None = None) -> tuple[PolicyAnswer, bool]:
     """history: earlier (role, text) turns. They go in with the question as untrusted text, never as instructions."""
     if not hits or hits[0][0] < MIN_RELEVANCE:
         return PolicyAnswer(answer="I could not find this in the HR policies. I've flagged it for the HR team.",
                             cited_sources=[], confidence="low", escalate_to_hr=True), False
     context = "\n\n".join(f"[{label(c)}] {c.title}: {c.content}" for _, c in hits)
+    if employee_context:
+        context = f"EMPLOYEE: {employee_context}\n\nPOLICY EXCERPTS:\n{context}"
 
     def mock() -> dict:
         top = hits[0][1]

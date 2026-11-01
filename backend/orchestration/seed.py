@@ -12,7 +12,7 @@ from backend.config import get_settings
 from backend.data import vectors
 from backend.data.models import (Employee, JobOffer, PointsLedger, PointsRule, PolicyChunk, Team, Tenant, User)
 from backend.orchestration import ingestion
-from backend.security.gateway import ROLE_SCOPES, hash_password
+from backend.security.gateway import hash_password
 
 
 def _csv(name: str) -> list[dict]:
@@ -38,29 +38,27 @@ def _bool(v: str) -> bool:
 
 def seed(session: Session) -> None:
     s = get_settings()
-    # Accounts of roles that no longer exist (viewer, employee) are removed from databases created before.
-    for old in session.exec(select(User).where(User.role.not_in(list(ROLE_SCOPES)))).all():
-        session.delete(old)
-    session.commit()
     if session.exec(select(Tenant)).first():
         return
     tenant = Tenant(name="acme")
     session.add(tenant)
     session.commit()
     tid = tenant.id
-    for email, role, pw in [
-        ("admin@acme.test", "admin", s.demo_admin_password),
-        ("recruiter@acme.test", "recruiter", s.demo_recruiter_password),
-        ("manager@acme.test", "manager", s.demo_manager_password),
+    for email, role, pw, emp in [
+        ("admin@acme.test", "admin", s.demo_admin_password, None),
+        ("recruiter@acme.test", "recruiter", s.demo_recruiter_password, None),
+        ("manager@acme.test", "manager", s.demo_manager_password, None),
+        ("viewer@acme.test", "viewer", s.demo_viewer_password, None),
+        ("yasmine.b@hr-demo.test", "employee", s.demo_employee_password, "emp_001"),
     ]:
-        session.add(User(tenant_id=tid, email=email, role=role, hashed_password=hash_password(pw)))
+        session.add(User(tenant_id=tid, email=email, role=role, hashed_password=hash_password(pw), employee_id=emp))
 
     for t in _csv("hr_teams"):
         session.add(Team(id=t["team_id"], tenant_id=tid, display_name=t["display_name"], member_count=int(t["member_count"]),
                          mailing_list=t["mailing_list"], tone_guide=t["tone_guide"]))
     session.commit()
     titles = _job_titles()
-    for e in _csv("hr_employees"):  # portal_token is not imported: employees have no login here
+    for e in _csv("hr_employees"):  # portal_token is not imported: employees log in with a password here
         session.add(Employee(id=e["employee_id"], tenant_id=tid, first_name=e["first_name"], last_initial=e["last_initial"],
                              team_id=e["team_id"], email=e["email"], job_title=titles.get(e["employee_id"], ""),
                              leave_balance_days=float(e["leave_balance_days"]), contract_type=e["contract_type"],

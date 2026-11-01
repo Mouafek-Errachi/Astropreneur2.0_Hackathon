@@ -30,7 +30,8 @@ class User(SQLModel, table=True):
     tenant_id: int = Field(foreign_key="tenant.id", index=True)
     email: str = Field(index=True, unique=True)
     hashed_password: str
-    role: str = "recruiter"  # recruiter | manager | admin
+    role: str = "viewer"  # admin | recruiter | viewer | employee
+    employee_id: Optional[str] = None  # links an employee login to hr_employees
     active: bool = True
 
 
@@ -262,6 +263,19 @@ class Employee(SQLModel, table=True):
     leave_balance_days: float = 0
     contract_type: str = "permanent"
     active: bool = True
+
+
+class Ticket(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=_id, primary_key=True)
+    tenant_id: int = Field(foreign_key="tenant.id", index=True)
+    employee_id: str = Field(foreign_key="employee.id", index=True)
+    request_text: str
+    category: str = "General HR"
+    priority: str = "normal"
+    status: str = "open"  # open | answered | closed
+    action_id: Optional[uuid.UUID] = None
+    risk_level: str = "none"
+    created_at: datetime = Field(default_factory=utcnow)
 
 
 class PointsRule(SQLModel, table=True):

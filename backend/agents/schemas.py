@@ -89,6 +89,19 @@ class AudienceRequest(Strict):
     injection_attempt_observed: bool = False
 
 
+TICKET_CATEGORIES = ["Leave", "Payroll", "Legal Document", "Benefits", "Policy Question", "Sensitive", "General HR"]
+
+
+class TicketTriage(Strict):
+    category: Literal["Leave", "Payroll", "Legal Document", "Benefits", "Policy Question", "Sensitive", "General HR"]
+    priority: Literal["low", "normal", "high"]
+    requires_hr_action: bool
+    hr_action_summary: str = Field(default="", max_length=300)
+    suggested_response: str = Field(default="", max_length=1200)
+    citations: list[str] = Field(default_factory=list, max_length=5)
+    injection_attempt_observed: bool = False
+
+
 class SearchCriteria(Strict):
     """What the recruiter asks for: read from their own words by the LLM, or set by hand."""
 

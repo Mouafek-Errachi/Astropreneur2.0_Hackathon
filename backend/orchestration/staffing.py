@@ -409,9 +409,9 @@ def seed_employee_skills(session: Session, tenant_id: int) -> None:
     session.commit()
 
 
-def set_employee_skills(session: Session, tenant_id: int, employee_id: str, items: list[dict],
-                        actor: str) -> list[EmployeeSkill]:
-    """A manager adds or validates skills. Upsert by skill."""
+def set_employee_skills(session: Session, tenant_id: int, employee_id: str, items: list[dict], actor: str,
+                        as_manager: bool) -> list[EmployeeSkill]:
+    """Employees declare their own skills (unvalidated); managers add or validate them. Upsert by skill."""
     tax = taxonomy(session)
     existing = {es.skill: es for es in session.exec(select(EmployeeSkill).where(EmployeeSkill.employee_id == employee_id))}
     for it in items:
@@ -419,11 +419,14 @@ def set_employee_skills(session: Session, tenant_id: int, employee_id: str, item
         es = existing.get(skill) or EmployeeSkill(tenant_id=tenant_id, employee_id=employee_id, skill=skill)
         es.level = int(it["level"])
         es.last_confirmed = utcnow()
-        es.source, es.validated, es.validated_by = "manager", bool(it.get("validated", True)), actor
+        if as_manager:
+            es.source, es.validated, es.validated_by = "manager", bool(it.get("validated", True)), actor
+        else:  # any self edit needs a manager again
+            es.source, es.validated, es.validated_by = "self", False, ""
         session.add(es)
     session.commit()
     audit.log(session, actor=actor, event="employee.skills_updated", tenant_id=tenant_id, target=f"employee:{employee_id}",
-              detail={"skills": [i["skill"] for i in items]})
+              detail={"skills": [i["skill"] for i in items], "as_manager": as_manager})
     return list(session.exec(select(EmployeeSkill).where(EmployeeSkill.employee_id == employee_id)))
 
 

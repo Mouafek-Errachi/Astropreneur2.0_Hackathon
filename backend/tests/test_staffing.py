@@ -70,10 +70,9 @@ def test_gaps_are_deterministic_and_respect_capacity(client, recruiter):
     assert first["sql"]["kind"] == "insufficient_level"  # nobody validated at senior level
 
 
-# 3 ---------------------------------------------------------------- unvalidated skills do not count until validated
-def test_unvalidated_skill_does_not_cover_until_a_manager_validates(client, recruiter, manager):
-    r = client.put("/employees/emp_001/skills", json={"skills": [{"skill": "kafka", "level": 3, "validated": False}]},
-                   headers=manager)
+# 3 ---------------------------------------------------------------- self-declared skills do not count until validated
+def test_unvalidated_skill_does_not_cover_until_a_manager_validates(client, recruiter, employee, manager):
+    r = client.put("/employees/me/skills", json={"skills": [{"skill": "kafka", "level": 3}]}, headers=employee)
     assert r.status_code == 200 and not next(s for s in r.json()["skills"] if s["skill"] == "kafka")["validated"]
     pid = _new_project(client, recruiter, "Streaming pilot", "Team needed:\n- Kafka (senior, half time) for the event bus")
     gaps = _confirm(client, recruiter, pid)
@@ -151,16 +150,19 @@ def test_ai_draft_breaking_the_rules_is_replaced_by_the_template(client, recruit
 
 
 # 7 ---------------------------------------------------------------- access control on skills and projects
-def test_skill_privacy_and_tenant_isolation(client, recruiter, manager):
+def test_skill_privacy_and_tenant_isolation(client, recruiter, manager, employee, viewer):
     pay = _project(client, recruiter, "Payments API migration")
     gaps = client.get(f"/projects/{pay['id']}/gaps", headers=recruiter).json()
     assert all("employee_id" not in o for g in gaps for o in g["internal_options"])  # recruiters: no names
     assert any("employee_id" in o for g in client.get(f"/projects/{pay['id']}/gaps", headers=manager).json()
                for o in g["internal_options"])
-    assert "people" not in client.get("/skills/matrix", headers=recruiter).json()["skills"][0]
+    assert "people" not in client.get("/skills/matrix", headers=viewer).json()["skills"][0]
     assert "people" in client.get("/skills/matrix", headers=manager).json()["skills"][0]
     assert client.get("/employees/emp_002/skills", headers=recruiter).status_code == 403
-    assert client.get("/employees/emp_002/skills", headers=manager).status_code == 200
+    assert client.get("/employees/emp_002/skills", headers=employee).status_code == 403
+    assert client.get("/employees/me/skills", headers=employee).status_code == 200
+    assert client.get("/projects", headers=employee).status_code == 403
+    assert client.post("/projects", json={"name": "Nope"}, headers=viewer).status_code == 403
 
     with Session(engine) as s:
         t = Tenant(name=f"initech-{uuid.uuid4().hex[:6]}")

@@ -1,12 +1,14 @@
-"""HR operations workflows ported from n8n: team broadcasts, group emails, points and leaderboard."""
+"""HR operations workflows ported from n8n: team broadcasts, employee tickets, points and leaderboard."""
 import json
+import uuid
 from collections import defaultdict
 
 from fastapi import HTTPException
 from sqlmodel import Session, func, select
 
-from backend.agents import hr_ops
-from backend.data.models import Employee, EmployeeSkill, PointsLedger, PointsRule, ProposedAction, Team, utcnow
+from backend.agents import hr_ops, policy_rag
+from backend.data.models import (Employee, EmployeeSkill, PointsLedger, PointsRule, ProposedAction, Team, Ticket,
+                                 utcnow)
 from backend.orchestration import workflow
 from backend.security.guard import inspect_text
 
@@ -91,8 +93,44 @@ def propose_group_email(session: Session, tenant_id: int, request: str, requeste
         source_type="group_email")
 
 
+def create_ticket(session: Session, tenant_id: int, employee_id: str, text: str, requested_by: str) -> Ticket:
+    emp = session.get(Employee, employee_id)
+    if not emp or emp.tenant_id != tenant_id or not emp.active:
+        raise HTTPException(403, "FORBIDDEN")
+    g = inspect_text(session, text, source="ticket", tenant_id=tenant_id, max_chars=3000)
+    hits = policy_rag.search(session, tenant_id, g.clean, k=3)
+    policy_ctx = "\n".join(f"[{policy_rag.label(c)}] {c.title}: {c.content}" for _, c in hits)
+    emp_ctx = f"{emp.first_name} {emp.last_initial}., team {emp.team_id}, contract {emp.contract_type}, leave balance {emp.leave_balance_days} days"
+    tri, _ = hr_ops.triage_ticket(g.clean, emp_ctx, policy_ctx, policy_rag.label(hits[0][1]) if hits else "")
+    ticket = Ticket(tenant_id=tenant_id, employee_id=emp.id, request_text=g.clean, category=tri.category,
+                    priority=tri.priority, risk_level=g.risk_level)
+    session.add(ticket)
+    session.commit()
+    action = workflow.propose(
+        session, tenant_id=tenant_id, type="send_email", title=f"[{tri.category}] reply to {emp.first_name} {emp.last_initial}.",
+        payload={"to": emp.email, "subject": f"Your HR request ({tri.category})", "body": tri.suggested_response,
+                 "_source_text": policy_ctx},
+        rationale=tri.hr_action_summary, input_risk=g.risk_level, input_flags=[f.to_dict() for f in g.flags],
+        created_by_agent="ticket_triage", requested_by=requested_by, source_type="ticket", source_id=str(ticket.id))
+    ticket.action_id = action.id
+    session.add(ticket)
+    session.commit()
+    session.refresh(ticket)
+    return ticket
+
+
+@workflow.on_resume("ticket")
+def _after_ticket(session: Session, action: ProposedAction) -> None:
+    t = session.get(Ticket, uuid.UUID(action.source_id))
+    if t:
+        t.status = "answered" if action.status == "executed" else "open"
+        session.add(t)
+
+
 def propose_award(session: Session, tenant_id: int, employee_id: str, action_type: str, note: str,
-                  idempotency_key: str, requested_by: str) -> ProposedAction:
+                  idempotency_key: str, requested_by: str, requester_employee_id: str | None) -> ProposedAction:
+    if requester_employee_id and requester_employee_id == employee_id:
+        raise HTTPException(403, "SELF_AWARD")
     emp, rule = session.get(Employee, employee_id), session.get(PointsRule, action_type)
     if not emp or emp.tenant_id != tenant_id:
         raise HTTPException(404, "Employee not found")

@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     seed_demo: bool = True
     demo_admin_password: str = "Admin#2026!"
     demo_recruiter_password: str = "Recruiter#2026!"
+    demo_viewer_password: str = "Viewer#2026!"
+    demo_employee_password: str = "Employee#2026!"
     demo_manager_password: str = "Manager#2026!"
     enable_demo_data: bool = True  # admin-only demo-data loader (turn off outside demos)
 

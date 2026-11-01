@@ -7,12 +7,24 @@ from api import call, can, require_login
 from ui import empty, esc, human, page_header
 
 require_login()
-page_header("HR operations", "Group emails, team broadcasts, recognition points and the interview co-pilot. Every "
-                             "message and award waits in Approvals.")
+page_header("HR operations", "Employee tickets, group emails, team broadcasts, recognition points and the interview "
+                             "co-pilot. Every message and award waits in Approvals.")
 writer = can("hr:write")
 ACTIONS = ["mentoring_session", "training_completed", "extra_task", "peer_review", "event_participation",
            "completed_onboarding"]
-tab_group, tab2, tab3, tab4 = st.tabs(["Email a group", "Team broadcast", "Recognition points", "Interview co-pilot"])
+tab1, tab_group, tab2, tab3, tab4 = st.tabs(["Tickets", "Email a group", "Team broadcast", "Recognition points",
+                                             "Interview co-pilot"])
+
+with tab1:
+    tickets = call("GET", "/hr/tickets") or []
+    if not tickets:
+        empty("No ticket yet.", "Employees open tickets from the Ask HR page.")
+    else:
+        st.caption("Each ticket's drafted reply waits in Approvals.")
+        st.dataframe([{"Employee": t["employee_id"], "Request": t["request_text"], "Category": t["category"],
+                       "Priority": human(t["priority"]), "Status": human(t["status"]), "Risk": human(t["risk_level"])}
+                      for t in tickets], hide_index=True, width="stretch",
+                     column_config={"Request": st.column_config.TextColumn(width="large")})
 
 with tab_group:
     st.caption("Say who should get it and what to tell them, in your own words. The AI writes the email, the "
