@@ -187,23 +187,33 @@ def _write_version(session: Session, project: Project, items: list[dict], *, con
 
 
 def analyze(session: Session, project: Project, actor: str) -> dict:
-    """Extracts a DRAFT version of the requirements. It is not used for gaps until a human confirms it."""
+    """Extracts a DRAFT version of the requirements from the uploaded documents AND the project's own name and
+    summary, so a project without documents still gets requirements. Nothing is used for gaps until a human confirms."""
     tax = taxonomy(session)
     vocab = {k: v["synonyms"] for k, v in tax.items()}
     docs = session.exec(select(ProjectDocument).where(ProjectDocument.project_id == project.id)).all()
     charter = "\n\n".join(d.text for d in docs if d.kind == "charter")  # visible text only, hidden text never sent
+    description = f"{project.name}\n{project.summary}".strip()
     needs: dict[str, dict] = {}
     model_flag, fallback = False, False
-    if charter.strip():
-        extracted, fallback = project_analyzer.extract_requirements(charter, vocab)
-        model_flag = extracted.injection_attempt_observed
+
+    def extract(text: str, source: str) -> None:
+        nonlocal model_flag, fallback
+        extracted, used_fallback = project_analyzer.extract_requirements(text, vocab)
+        model_flag, fallback = model_flag or extracted.injection_attempt_observed, fallback or used_fallback
         for n in extracted.skills:
             skill = normalize(n.skill, tax)
-            needs.setdefault(skill, {**n.model_dump(), "skill": skill, "source": "llm"})
+            needs.setdefault(skill, {**n.model_dump(), "skill": skill, "source": source})
+
+    # Most detailed source first: charter, then manifests, then the project description fills in what they miss.
+    if charter.strip():
+        extract(charter, "llm")
     for d in docs:
         if d.kind == "manifest":
             for n in manifest_skills(d.original_filename, d.text, tax):
                 needs.setdefault(n["skill"], n)
+    if description:
+        extract(description, "project")
     _write_version(session, project, list(needs.values()), confirmed=False, actor=actor)
     if model_flag:
         events.record(session, tenant_id=project.tenant_id, source="project_document", source_id=str(project.id),

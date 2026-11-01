@@ -54,7 +54,8 @@ with st.expander("New project", expanded=not projects, icon=":material/add:"):
     else:
         with st.form("new_project"):
             name = st.text_input("Project name")
-            summary = st.text_area("Summary")
+            summary = st.text_area("Summary", help="Describe the skills the project needs (e.g. 'a senior Python developer "
+                                                "full time, React half time'). The AI reads it even without documents.")
             c1, c2 = st.columns(2)
             team = c1.selectbox("Team", [None] + [t["id"] for t in call("GET", "/hr/teams") or []])
             deadline = c2.text_input("Deadline (YYYY-MM-DD)")
@@ -82,6 +83,21 @@ with tab_projects:
     p = call("GET", f"/projects/{pid}")
     st.caption(f"{esc(p['summary'])}  ·  team: {p['team_id'] or '—'}  ·  deadline: {p['deadline'] or '—'}  ·  "
                f"already assigned: {p['assigned_fte']:g} FTE")
+
+    # ---------------------------------------------------------------- description (analysed like a document)
+    if can_write:
+        with st.expander("Project description", expanded=not p["documents"] and not p["requirements"]):
+            with st.form(f"desc{pid}"):
+                new_summary = st.text_area("Summary", value=p["summary"], height=150,
+                                           help="The AI extracts the required skills from this text and from the "
+                                                "documents. Skills found in documents take precedence.")
+                c1, c2 = st.columns(2)
+                save = c1.form_submit_button("💾 Save and analyse")
+                again = c2.form_submit_button("🔄 Analyse again")
+            if save and call("PATCH", f"/projects/{pid}", json={"summary": new_summary}):
+                st.rerun()
+            if again and call("POST", f"/projects/{pid}/analyze"):
+                st.rerun()
 
     # ---------------------------------------------------------------- documents
     with st.expander(f"Documents ({len(p['documents'])})", expanded=not p["documents"]):
@@ -111,8 +127,10 @@ with tab_projects:
         st.caption(f"Version {p['requirements_version']}, confirmed by {p['confirmed_by']}. Edit and confirm again to "
                    "recompute the gaps.")
     elif p["requirements"]:
-        st.warning(f"Draft version {p['requirements_version']} extracted by the AI from the documents. Check it: it is "
-                   "not used until a person confirms it.")
+        st.warning(f"Draft version {p['requirements_version']} extracted by the AI from the project description and "
+                   "documents. Check it: it is not used until a person confirms it.")
+    else:
+        st.info("No skills found yet. Describe them in the project description, upload a charter, or add rows below.")
     req_df = pd.DataFrame(p["requirements"] or [], columns=["skill", "level", "headcount", "allocation_pct", "evidence", "source"])
     edited = st.data_editor(
         req_df, key=f"req{pid}_{p['requirements_version']}", num_rows="dynamic" if can_write else "fixed",

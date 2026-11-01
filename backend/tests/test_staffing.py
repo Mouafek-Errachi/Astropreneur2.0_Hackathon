@@ -217,3 +217,29 @@ def test_gap_covered_internally_needs_a_plan_and_blocks_hiring(client, recruiter
     assert again[0]["decision"] == "internal" and again[0]["internal_plan"]  # survives a recompute
     undone = client.put(url, json={"decision": "open"}, headers=recruiter).json()
     assert undone["decision"] == "open" and undone["internal_plan"] == ""
+
+
+# -------------------------------------------------------------------- no documents: the project itself is analysed
+def test_project_without_documents_gets_requirements_from_its_description(client, recruiter):
+    p = client.post("/projects", json={"name": "Internal analytics dashboard", "team_id": "engineering",
+                                       "summary": "We need a senior Python developer full time and React half time."},
+                    headers=recruiter).json()
+    assert not p["documents"] and not p["requirements_confirmed"]
+    req = {r["skill"]: r for r in p["requirements"]}
+    assert set(req) == {"python", "react"} and {r["source"] for r in req.values()} == {"project"}
+    assert (req["python"]["level"], req["python"]["allocation_pct"]) == (3, 100)  # each clause read on its own
+    assert (req["react"]["level"], req["react"]["allocation_pct"]) == (2, 50)
+
+    # editing the summary re-analyses it into a new draft
+    r = client.patch(f"/projects/{p['id']}", json={"summary": "Two Kubernetes engineers, full time."}, headers=recruiter)
+    assert r.status_code == 200, r.text
+    det = r.json()
+    assert det["requirements_version"] == p["requirements_version"] + 1
+    assert {x["skill"]: x["headcount"] for x in det["requirements"]} == {"kubernetes": 2}
+    assert set(_confirm(client, recruiter, p["id"])) <= {"kubernetes"}
+
+    # documents take precedence over the description for the skills they mention
+    charter = "Team needed:\n- Kubernetes (expert, 1 engineer, half time)\n"
+    client.post(f"/projects/{p['id']}/documents", files=[("files", ("charter.md", charter.encode()))], headers=recruiter)
+    k8s = client.get(f"/projects/{p['id']}", headers=recruiter).json()["requirements"]
+    assert [(x["skill"], x["level"], x["source"]) for x in k8s] == [("kubernetes", 4, "llm")]

@@ -159,9 +159,15 @@ class InterviewAssistRequest(Strict):
 # ---------------------------------------------------------------- project staffing
 class ProjectCreate(Strict):
     name: str = Field(min_length=2, max_length=150)
-    summary: str = Field(default="", max_length=2000)
+    summary: str = Field(default="", max_length=8000)  # also read by the analyzer: skills can be described here
     team_id: Optional[str] = Field(default=None, pattern=r"^[a-z_]{2,40}$")
     deadline: str = Field(default="", max_length=20)
+
+
+class ProjectUpdate(Strict):
+    name: Optional[str] = Field(default=None, min_length=2, max_length=150)
+    summary: Optional[str] = Field(default=None, max_length=8000)
+    deadline: Optional[str] = Field(default=None, max_length=20)
 
 
 class RequirementsIn(Strict):

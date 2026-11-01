@@ -10,7 +10,7 @@ from backend.config import get_settings
 from backend.data.db import get_session
 from backend.data.models import (Employee, EmployeeSkill, Project, ProjectAssignment, ProjectDocument, SkillGap)
 from backend.orchestration import staffing
-from backend.schemas import EmployeeSkillsIn, GapDecision, ProjectCreate, RequirementsIn
+from backend.schemas import EmployeeSkillsIn, GapDecision, ProjectCreate, ProjectUpdate, RequirementsIn
 from backend.security.gateway import Principal, get_owned, require
 
 router = APIRouter(tags=["project staffing"])
@@ -62,6 +62,23 @@ def create_project(body: ProjectCreate, p: Principal = Depends(require("projects
                    session: Session = Depends(get_session)):
     pr = staffing.create_project(session, p.tenant_id, name=body.name, summary=body.summary, team_id=body.team_id,
                                  deadline=body.deadline, actor=p.subject)
+    if body.summary.strip():  # no documents needed: the description alone gives a first draft
+        staffing.analyze(session, pr, p.subject)
+    return _project_out(session, pr, p, detail=True)
+
+
+@router.patch("/projects/{project_id}")
+def update_project(project_id: str, body: ProjectUpdate, p: Principal = Depends(require("projects:write")),
+                   session: Session = Depends(get_session)):
+    """Editing the name or summary re-runs the analysis (a new draft version), like uploading a document."""
+    pr = get_owned(session, Project, _uuid(project_id), p)
+    changes = body.model_dump(exclude_none=True)
+    for k, v in changes.items():
+        setattr(pr, k, v)
+    session.add(pr)
+    session.commit()
+    if {"name", "summary"} & set(changes):
+        staffing.analyze(session, pr, p.subject)
     return _project_out(session, pr, p, detail=True)
 
 

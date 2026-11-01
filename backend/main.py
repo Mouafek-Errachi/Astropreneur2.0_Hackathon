@@ -42,7 +42,7 @@ app.add_middleware(SlowAPIMiddleware)  # applies DEFAULT_RATE_LIMIT to every rou
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
-    allow_methods=["GET", "POST", "PUT"],
+    allow_methods=["GET", "POST", "PUT", "PATCH"],
     allow_headers=["Authorization", "Content-Type", "X-API-Key", "X-Request-ID"],
 )
 
