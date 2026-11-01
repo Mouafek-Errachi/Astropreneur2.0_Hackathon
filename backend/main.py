@@ -66,8 +66,10 @@ async def gateway_headers(request: Request, call_next):
 @app.get("/health")
 def health():
     p = settings.llm_provider
+    w = settings.writer_llm_provider
     return {"status": "ok", "llm_provider": p, "llm_fallback": settings.llm_fallback_provider or None,
-            "llm_ready": p == "mock" or bool(getattr(settings, f"{p}_api_key", ""))}
+            "llm_ready": p == "mock" or bool(getattr(settings, f"{p}_api_key", "")),
+            "llm_writer": w or None, "llm_writer_ready": not w or bool(getattr(settings, f"{w}_api_key", ""))}
 
 
 for r in (auth.router, recruiting.router, inbox.router, approvals.router, scheduling.router, hr.router, security.router,

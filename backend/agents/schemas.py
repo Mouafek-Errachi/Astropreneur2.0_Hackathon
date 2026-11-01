@@ -80,6 +80,15 @@ class BroadcastDraft(Strict):
     injection_attempt_observed: bool = False
 
 
+class AudienceRequest(Strict):
+    """Who a group email is for, and what to tell them. The values must come from the lists the agent is given."""
+    job_titles: list[str] = Field(default_factory=list, max_length=10)
+    teams: list[str] = Field(default_factory=list, max_length=10)
+    skills: list[str] = Field(default_factory=list, max_length=10)
+    message: str = Field(default="", max_length=3000)
+    injection_attempt_observed: bool = False
+
+
 TICKET_CATEGORIES = ["Leave", "Payroll", "Legal Document", "Benefits", "Policy Question", "Sensitive", "General HR"]
 
 

@@ -110,6 +110,7 @@ class ApproveRequest(Strict):
     edited_subject: Optional[str] = Field(default=None, max_length=200)
     edited_body: Optional[str] = Field(default=None, max_length=8000)
     selected_slot: Optional[int] = Field(default=None, ge=0, le=10)  # interviews: book this slot now
+    excluded_recipients: list[str] = Field(default_factory=list, max_length=500)  # group emails: employee ids to drop
     acknowledge_risk: bool = False
 
 
@@ -139,6 +140,10 @@ class TicketCreate(Strict):
 class BroadcastRequest(Strict):
     target_team: str = Field(pattern=r"^[a-z_]{2,40}$")
     message_prompt: str = Field(min_length=10, max_length=3000)
+
+
+class GroupEmailRequest(Strict):
+    request: str = Field(min_length=10, max_length=3000)  # "send to all backend engineers that ..."
 
 
 class AwardRequest(Strict):

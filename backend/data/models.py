@@ -259,6 +259,7 @@ class Employee(SQLModel, table=True):
     last_initial: str
     team_id: str = Field(foreign_key="team.id")
     email: str
+    job_title: str = ""  # used to address a group email ("all backend engineers")
     leave_balance_days: float = 0
     contract_type: str = "permanent"
     active: bool = True

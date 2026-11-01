@@ -9,7 +9,8 @@ from backend.agents import policy_rag
 from backend.data.db import get_session
 from backend.data.models import Employee, Followup, Team, Ticket
 from backend.orchestration import followups, hr_ops, seed
-from backend.schemas import AskRequest, AwardRequest, BroadcastRequest, InterviewAssistRequest, TicketCreate
+from backend.schemas import (AskRequest, AwardRequest, BroadcastRequest, GroupEmailRequest, InterviewAssistRequest,
+                             TicketCreate)
 from backend.security import audit
 from backend.security.gateway import Principal, get_owned, require
 from backend.security.guard import inspect_text
@@ -63,8 +64,8 @@ def teams(p: Principal = Depends(require("hr:read")), session: Session = Depends
 
 @router.get("/hr/employees")
 def employees(p: Principal = Depends(require("hr:read")), session: Session = Depends(get_session)):
-    return [{"id": e.id, "name": f"{e.first_name} {e.last_initial}.", "team": e.team_id, "active": e.active}
-            for e in session.exec(select(Employee).where(Employee.tenant_id == p.tenant_id))]
+    return [{"id": e.id, "name": f"{e.first_name} {e.last_initial}.", "team": e.team_id, "job_title": e.job_title,
+             "active": e.active} for e in session.exec(select(Employee).where(Employee.tenant_id == p.tenant_id))]
 
 
 @router.post("/hr/broadcast")
@@ -72,6 +73,14 @@ def broadcast(body: BroadcastRequest, p: Principal = Depends(require("hr:write")
     a = hr_ops.propose_broadcast(session, p.tenant_id, body.target_team, body.message_prompt, p.subject)
     return {"action_id": str(a.id), "status": a.status, "risk_level": a.risk_level, "payload": json.loads(a.payload),
             "note": "Queued for approval by a different HR user (four-eyes)."}
+
+
+@router.post("/hr/group-email")
+def group_email(body: GroupEmailRequest, p: Principal = Depends(require("hr:write")),
+                session: Session = Depends(get_session)):
+    a = hr_ops.propose_group_email(session, p.tenant_id, body.request, p.subject)
+    return {"action_id": str(a.id), "status": a.status, "risk_level": a.risk_level, "payload": json.loads(a.payload),
+            "flags": json.loads(a.risk_flags), "note": "Queued for approval by a different HR user (four-eyes)."}
 
 
 @router.post("/hr/points/award")

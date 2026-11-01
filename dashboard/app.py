@@ -44,6 +44,12 @@ with st.sidebar:
         st.markdown(chip("AI key missing", "orange", "smart_toy"),
                     help=f"LLM_PROVIDER={health.get('llm_provider')} but its API key is empty in .env, so the simple "
                          "rules are used.")
+    if writer := health.get("llm_writer"):
+        ready = health.get("llm_writer_ready")
+        st.markdown(chip(f"Emails: {writer}" if ready else f"{writer} key missing", "green" if ready else "orange",
+                         "edit_note"),
+                    help=f"Broadcasts and group emails are written by {writer}."
+                    + ("" if ready else f" Its API key is empty in .env, so {health.get('llm_provider')} writes them."))
     if st.button("Log out", icon=":material/logout:", width="stretch"):
         st.session_state.clear()
         st.rerun()

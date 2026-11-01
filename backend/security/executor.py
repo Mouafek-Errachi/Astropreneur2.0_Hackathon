@@ -27,7 +27,7 @@ from backend.security import audit
 from backend.security.gateway import Principal
 from backend.security.validator import check_outgoing_text
 
-FOUR_EYES_ALWAYS = {"broadcast", "create_job_offer"}  # team-wide email; opening a position
+FOUR_EYES_ALWAYS = {"broadcast", "group_email", "create_job_offer"}  # email to many people; opening a position
 FOUR_EYES_DECISIONS = {"record_decision", "apply_weights"}  # decisions about people and how they are scored
 
 
@@ -102,6 +102,11 @@ def approve(session: Session, action: ProposedAction, reviewer: Principal, *, no
                 payload[k] = edits[k]
         if edits.get("selected_slot") is not None and action.type == "schedule_interview":
             payload["selected_slot"] = _check_slot(session, action.tenant_id, payload, int(edits["selected_slot"]))
+        if edits.get("excluded_recipients") and action.type == "group_email":  # people can be removed, never added
+            kept = [r for r in payload["recipients"] if r["id"] not in set(edits["excluded_recipients"])]
+            if not kept:
+                raise HTTPException(400, "NO_RECIPIENTS: keep at least one recipient, or reject the email")
+            payload["recipients"], payload["to"] = kept, f"{len(kept)} people: {payload['audience']}"
         action.payload = json.dumps(payload)
         audit.log(session, actor=reviewer.subject, event="action.edited_by_human", tenant_id=action.tenant_id,
                   target=f"action:{action.id}", commit=False)
@@ -159,6 +164,10 @@ def _execute(session: Session, action: ProposedAction, approval: Approval) -> No
     try:
         if action.type in ("send_email", "send_reminder", "broadcast"):
             action.result = _send_email(session, action, p["to"], p["subject"], p["body"])
+        elif action.type == "group_email":  # one email each: recipients never see each other's address
+            for r in p["recipients"]:
+                _send_email(session, action, r["email"], p["subject"], p["body"])
+            action.result = f"{len(p['recipients'])} emails sent to {p['audience']}"
         elif action.type == "record_decision":
             app = session.get(Application, uuid.UUID(p["application_id"]))
             cand = session.get(Candidate, app.candidate_id) if app else None

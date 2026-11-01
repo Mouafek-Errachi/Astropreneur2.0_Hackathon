@@ -14,7 +14,8 @@ page_header("Approvals", "Agents only propose. Each approval is signed and check
 TYPES = {"send_email": ("Email", "mail"), "send_reminder": ("Reminder", "notifications"),
          "record_decision": ("Candidate decision", "how_to_reg"), "schedule_interview": ("Interview invitation", "event"),
          "apply_weights": ("Learned weights", "tune"), "award_points": ("Recognition points", "military_tech"),
-         "broadcast": ("Team broadcast", "campaign"), "create_job_offer": ("Job offer", "work")}
+         "broadcast": ("Team broadcast", "campaign"), "group_email": ("Group email", "groups"),
+         "create_job_offer": ("Job offer", "work")}
 
 
 def _slot_label(s: dict) -> str:
@@ -47,8 +48,17 @@ def review(a: dict) -> None:
         st.warning("Check before approving: " + "; ".join(f"{esc(human(f['type']))} ({f['severity']})"
                                                          for f in a["risk_flags"][:8]), icon=":material/gpp_maybe:")
     subject = body = slot = None
-    if "body" in p:
+    excluded = []
+    if "recipients" in p:  # group email: one email each; people can be removed here, never added
+        names = {r["id"]: f"{r['name']} · {r['job_title'] or human(r['team'])}" for r in p["recipients"]}
+        keep = st.multiselect(f"To: {esc(p['audience'])}", list(names), default=list(names), format_func=names.get,
+                              key=f"rc{a['id']}", help="Remove anyone who should not get it. Each person receives "
+                                                       "their own email, so nobody sees the other addresses.")
+        excluded = [i for i in names if i not in keep]
+        st.caption(f"{len(keep)} of {len(names)} people will receive it.")
+    if "body" in p and "recipients" not in p:
         st.text_input("To", p.get("to"), disabled=True, key=f"to{a['id']}", help="The recipient cannot be changed.")
+    if "body" in p:
         subject = st.text_input("Subject", p.get("subject", ""), key=f"s{a['id']}")
         body = st.text_area("Message", p.get("body", ""), key=f"b{a['id']}", height=220,
                             help="Edit freely: your version is what will be sent.")
@@ -73,7 +83,8 @@ def review(a: dict) -> None:
         if body is not None and body != p.get("body"):
             edits["edited_body"] = body
         r = call("POST", f"/approvals/{a['id']}/approve",
-                 json={**edits, "acknowledge_risk": ack, "selected_slot": slot, "note": note})
+                 json={**edits, "acknowledge_risk": ack, "selected_slot": slot, "note": note,
+                       "excluded_recipients": excluded})
         if r:
             flash(f"{human(r['status'])}: {esc(r['result'])}")
             st.rerun()

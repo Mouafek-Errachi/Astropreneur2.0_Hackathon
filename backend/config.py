@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     # L3 agents: LLM provider = mock | gemini | grok, with an optional fallback provider
     llm_provider: str = "mock"
     llm_fallback_provider: str = ""
+    writer_llm_provider: str = ""  # writes emails from HR notes (broadcasts, group emails); empty = LLM_PROVIDER
     gemini_api_key: str = ""
     gemini_model: str = "gemini-3.5-flash-lite"  # fast and accurate enough for extraction and drafting
     # Used in turn when a model is rate-limited or overloaded. Free-tier quotas are per model, so a pool adds up.

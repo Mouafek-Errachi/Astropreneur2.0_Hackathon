@@ -7,12 +7,13 @@ from api import call, can, require_login
 from ui import empty, esc, human, page_header
 
 require_login()
-page_header("HR operations", "Employee tickets, team broadcasts, recognition points and the interview co-pilot. Every "
-                             "message and award waits in Approvals.")
+page_header("HR operations", "Employee tickets, group emails, team broadcasts, recognition points and the interview "
+                             "co-pilot. Every message and award waits in Approvals.")
 writer = can("hr:write")
 ACTIONS = ["mentoring_session", "training_completed", "extra_task", "peer_review", "event_participation",
            "completed_onboarding"]
-tab1, tab2, tab3, tab4 = st.tabs(["Tickets", "Team broadcast", "Recognition points", "Interview co-pilot"])
+tab1, tab_group, tab2, tab3, tab4 = st.tabs(["Tickets", "Email a group", "Team broadcast", "Recognition points",
+                                             "Interview co-pilot"])
 
 with tab1:
     tickets = call("GET", "/hr/tickets") or []
@@ -24,6 +25,34 @@ with tab1:
                        "Priority": human(t["priority"]), "Status": human(t["status"]), "Risk": human(t["risk_level"])}
                       for t in tickets], hide_index=True, width="stretch",
                      column_config={"Request": st.column_config.TextColumn(width="large")})
+
+with tab_group:
+    st.caption("Say who should get it and what to tell them, in your own words. The AI writes the email, the "
+               "recipients are looked up by job title, team or skill, and someone else approves it before it is sent.")
+    with st.form("group_email"):
+        request = st.text_area("Your request", placeholder="e.g. Send to all backend engineers that the meeting is "
+                                                           "tomorrow at 18:00 in room B.")
+        asked = st.form_submit_button("Draft the email", type="primary", icon=":material/edit_note:",
+                                      disabled=not writer)
+    if asked:
+        if len(request.strip()) < 10:
+            st.warning("Write who should receive it and what to tell them.")
+        elif r := call("POST", "/hr/group-email", json={"request": request}):
+            p = r["payload"]
+            st.success(f"Drafted for **{len(p['recipients'])} people** ({esc(p['audience'])}). It waits in "
+                       "Approvals: someone else checks the list and the message, then sends it.",
+                       icon=":material/check_circle:")
+            left, right = st.columns([3, 2], gap="large")
+            with left, st.container(border=True):
+                st.markdown(f"**{esc(p['subject'])}**")
+                st.text(p["body"])
+            with right:
+                st.dataframe([{"Name": x["name"], "Job title": x["job_title"], "Team": human(x["team"])}
+                              for x in p["recipients"]], hide_index=True, width="stretch")
+            if r["risk_level"] != "none":
+                st.warning("The checks flagged something (a figure or link not in your request, or an injection "
+                           "attempt): see the flags in Approvals.", icon=":material/gpp_maybe:")
+            st.page_link("pages/3_Approvals.py", label="Open Approvals", icon=":material/arrow_forward:")
 
 with tab2:
     st.caption("Turn rough notes into a message for a team. A check flags any number or link that was not in your notes, "
