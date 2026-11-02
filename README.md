@@ -29,7 +29,7 @@ Only HR staff log in; employees are records, not users. Three roles, each adding
 | `manager@acme.test` | **Manager:** everything a recruiter does, signs off on job offers, hiring decisions, broadcasts and scoring weights, and sees and validates individual employee skills. |
 | `admin@acme.test` | **Admin (IT/security):** everything, plus API keys, the audit log and demo data. |
 
-Passwords are in `.env.example`. Log in as admin, open **Demo data** at the bottom of the Home page, tick the bulk option and click **Load demo data**. The menu shows each role only the pages it can use.
+Demo-only passwords for these fictional accounts are in `.env.example`. Change them before any real deployment. Log in as admin, open **Demo data** at the bottom of the Home page, tick the bulk option and click **Load demo data**. The menu shows each role only the pages it can use.
 
 ## What it does
 
@@ -209,7 +209,6 @@ Optional profiles: `--profile postgres` (pgvector), `--profile mail` (MailHog UI
 
 ## Roadmap
 
-- Chrome extension for the live interview co-pilot (calls `POST /interview/assist`).
 - Executor in its own container (the only one with mail credentials), agents in a worker without them.
 - LangGraph `interrupt()` + checkpointer for multi-step workflows (`orchestration/workflow.py` already has the propose/resume shape).
 - pgvector columns and SQL similarity search on Postgres (`data/vectors.py`); real calendar and SMTP integration.
